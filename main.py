@@ -653,19 +653,49 @@ def test_analise():
 
 # ==================== PIPELINE ENDPOINTS ====================
 
+def _gerar_links_pesquisa_mercado(cidade: str, bairro: str, tipo: str = "apartamento") -> dict:
+    """
+    Gera links de busca para pesquisa de mercado em portais imobiliários.
+    """
+    from urllib.parse import quote
+
+    cidade_slug = cidade.lower().replace(" ", "-").replace("sao", "sao")
+    bairro_slug = bairro.lower().replace(" ", "-") if bairro else ""
+
+    # Mapeamento de cidades para slugs dos portais
+    cidade_map = {
+        "SAO PAULO": "sao-paulo",
+        "SANTOS": "santos",
+        "GUARUJA": "guaruja",
+        "PRAIA GRANDE": "praia-grande",
+        "SAO VICENTE": "sao-vicente"
+    }
+    cidade_portal = cidade_map.get(cidade.upper(), cidade_slug)
+
+    return {
+        "zapimoveis": f"https://www.zapimoveis.com.br/venda/apartamentos/sp+{cidade_portal}+{bairro_slug}/",
+        "vivareal": f"https://www.vivareal.com.br/venda/sp/{cidade_portal}/{bairro_slug}/apartamento_residencial/",
+        "quintoandar": f"https://www.quintoandar.com.br/comprar/imovel/{cidade_portal}-sp-brasil/",
+        "imovelweb": f"https://www.imovelweb.com.br/apartamentos-venda-{bairro_slug}-{cidade_portal}.html"
+    }
+
+
 def _formatar_detalhe_imovel(ranking: int, imovel: dict) -> str:
     """
     Formata detalhes completos de um imóvel para email.
-    Inclui todos os 9 itens solicitados pelo usuário.
+    Inclui todos os 9 itens solicitados + links de fontes para validação humana.
     """
     # Dados básicos
-    id_imovel = imovel.get("id_imovel", "N/A")
+    id_imovel = str(imovel.get("id_imovel", "N/A")).strip()
     endereco = imovel.get("endereco", "N/A")
     bairro = imovel.get("bairro", "N/A")
     cidade = imovel.get("cidade", "SP")
     preco = imovel.get("preco", 0)
     desconto = imovel.get("desconto", 0)
-    link = imovel.get("link", "")
+    link_caixa = imovel.get("link", "")
+    tipo_imovel = imovel.get("tipo_imovel", "Apartamento")
+    area = imovel.get("area_privativa", 0)
+    quartos = imovel.get("quartos", 0)
 
     # Dados de custos
     custos = imovel.get("custos", {})
@@ -679,11 +709,14 @@ def _formatar_detalhe_imovel(ranking: int, imovel: dict) -> str:
     preco_m2 = mercado.get("preco_m2", 0)
     condominio = mercado.get("condominio_mensal", 0)
     similares = mercado.get("imoveis_similares", [])
+    fonte_mercado = mercado.get("fonte", "base_regional")
+    confianca = mercado.get("confianca", "media")
 
     # Dados da matrícula
     matricula = imovel.get("analise_matricula", {})
     valor_gravames = matricula.get("valor_gravames", 0)
     gravames_extintos = matricula.get("gravames_extintos", [])
+    gravames_transferidos = matricula.get("gravames_transferidos", [])
 
     # Dados do edital
     edital = imovel.get("analise_edital", {})
@@ -698,70 +731,112 @@ def _formatar_detalhe_imovel(ranking: int, imovel: dict) -> str:
     recomendacao = imovel.get("recomendacao", "N/A")
     nivel_risco = imovel.get("nivel_risco", "N/A")
 
-    # Formata links de mercado
-    links_mercado = ""
+    # ============ GERA LINKS DE FONTES PARA VALIDAÇÃO ============
+
+    # Links de pesquisa de mercado (SEMPRE gerar)
+    links_pesquisa = _gerar_links_pesquisa_mercado(cidade, bairro, tipo_imovel)
+
+    # Formata links de imóveis similares encontrados
+    links_similares = ""
     if similares:
         for i, sim in enumerate(similares[:3], 1):
             link_sim = sim.get("link", "")
+            preco_sim = sim.get("preco", 0)
+            area_sim = sim.get("area", 0)
             if link_sim:
-                links_mercado += f"      • {link_sim}\n"
-    if not links_mercado:
-        links_mercado = "      • Pesquisa baseada em dados regionais\n"
+                links_similares += f"      {i}. R$ {preco_sim:,.0f} ({area_sim}m²): {link_sim}\n"
 
     # Formata dívidas da matrícula
     dividas_matricula = ""
     if valor_gravames > 0:
-        dividas_matricula = f"R$ {valor_gravames:,.2f}"
+        dividas_matricula = f"R$ {valor_gravames:,.2f} (ATIVO)"
     elif gravames_extintos:
-        dividas_matricula = f"EXTINTOS: {', '.join(gravames_extintos)}"
+        dividas_matricula = f"EXTINTOS: {', '.join(gravames_extintos[:3])}"
+    elif gravames_transferidos:
+        dividas_matricula = f"TRANSFERIDOS: {', '.join(gravames_transferidos[:2])}"
     else:
-        dividas_matricula = "Nenhuma encontrada"
+        dividas_matricula = "Nenhum gravame encontrado"
 
     return f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏠 #{ranking} - {endereco} - {bairro} - {cidade}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{'='*60}
+🏠 #{ranking} - {endereco}
+   📍 {bairro} - {cidade} | {tipo_imovel} {area}m² | {quartos} qto(s)
+{'='*60}
 
-📋 DADOS BÁSICOS
-   • ID: {id_imovel}
+🔗 LINKS PARA VALIDAÇÃO (CHECK HUMANO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   📄 FICHA DO IMÓVEL (Caixa):
+      {link_caixa}
+
+   📋 EDITAL DO LEILÃO (mesmo link, aba "Edital"):
+      {link_caixa}
+
+   📜 MATRÍCULA: Solicitar no Cartório de Registro de Imóveis
+      da comarca de {cidade}. Número do imóvel: {id_imovel}
+
+📊 PESQUISAR VALOR DE MERCADO (faça sua própria pesquisa):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   🔍 ZapImóveis:
+      {links_pesquisa['zapimoveis']}
+
+   🔍 VivaReal:
+      {links_pesquisa['vivareal']}
+
+   🔍 QuintoAndar:
+      {links_pesquisa['quintoandar']}
+
+   🔍 ImovelWeb:
+      {links_pesquisa['imovelweb']}
+
+{'   📌 IMÓVEIS SIMILARES ENCONTRADOS:' if links_similares else ''}
+{links_similares if links_similares else '      (Nenhum encontrado via API - use os links acima)'}
+
+   💡 FONTE DOS DADOS: {fonte_mercado.upper()} (Confiança: {confianca.upper()})
+   💡 Preço/m² usado: R$ {preco_m2:,.2f}
+
+📋 DADOS DO IMÓVEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   • ID Caixa: {id_imovel}
    • Valor Leilão: R$ {preco:,.2f}
    • Desconto: {desconto:.1f}%
-   • Link Caixa: {link}
+   • Área: {area}m²
 
 💰 CUSTOS DE AQUISIÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    1️⃣ Comissão Leiloeiro (5%): R$ {custos_aquisicao.get('comissao_leiloeiro', 0):,.2f}
    2️⃣ Custos Cartório:
       • Escritura: R$ {custos_aquisicao.get('escritura', 0):,.2f}
       • Registro: R$ {custos_aquisicao.get('registro', 0):,.2f}
       • Certidões: R$ {custos_aquisicao.get('certidoes', 0):,.2f}
-   3️⃣ ITBI ({3 if cidade == 'SAO PAULO' else 2}%): R$ {custos_aquisicao.get('itbi', 0):,.2f}
+   3️⃣ ITBI ({3 if cidade.upper() == 'SAO PAULO' else 2}%): R$ {custos_aquisicao.get('itbi', 0):,.2f}
    • Honorários Advogado: R$ {custos_aquisicao.get('honorarios_advogado', 0):,.2f}
    • Custo Desocupação: R$ {custos_aquisicao.get('custo_desocupacao', 0):,.2f}
    • Débitos Edital: R$ {custos_aquisicao.get('debitos_edital', 0):,.2f}
    • Reforma Estimada: R$ {custos_aquisicao.get('custo_reforma', 0):,.2f}
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ▸ TOTAL INVESTIMENTO: R$ {investimento_total:,.2f}
 
-📊 PESQUISA DE MERCADO
-   4️⃣ Links de Referência:
-{links_mercado}   • Preço/m² Região: R$ {preco_m2:,.2f}
-   5️⃣ Condomínio Mensal: R$ {condominio:,.2f}
-
 📜 ANÁLISE DA MATRÍCULA
-   6️⃣ Dívidas/Gravames: {dividas_matricula}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   6️⃣ Gravames/Dívidas: {dividas_matricula}
    • Score Matrícula: {scores.get('matricula', 0)}/100
+   ⚠️ IMPORTANTE: Solicitar matrícula atualizada no cartório!
 
 📄 DADOS DO EDITAL
-   7️⃣ Informações:
-   • Ocupação: {ocupacao.upper()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   7️⃣ Ocupação: {ocupacao.upper()}
    • Débitos IPTU: R$ {debitos_iptu:,.2f}
    • Débitos Condomínio: R$ {debitos_condo:,.2f}
-   • Total Débitos Edital: R$ {total_debitos:,.2f}
+   • Total Débitos: R$ {total_debitos:,.2f}
+   5️⃣ Condomínio Mensal Estimado: R$ {condominio:,.2f}
 
 💸 CUSTOS DE VENDA (cenário 6 meses)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    8️⃣ IRPF Ganho Capital: R$ {custos_venda.get('irpf', 0):,.2f}
    9️⃣ Comissão Corretor (6%): R$ {custos_venda.get('comissao_corretor', 0):,.2f}
 
 📈 RESULTADO PROJETADO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    • Preço Venda Estimado: R$ {resultado.get('preco_venda', 0):,.2f}
    • Lucro Líquido: R$ {resultado.get('lucro_liquido', 0):,.2f}
    • ROI: {resultado.get('roi_total_percentual', 0):.1f}%
