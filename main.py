@@ -732,6 +732,34 @@ def pipeline_status():
     })
 
 
+@app.route('/pipeline/download/<tipo>', methods=['GET'])
+def download_relatorio(tipo):
+    """Download do último relatório gerado (pdf ou csv)"""
+    from flask import send_file
+    from pathlib import Path
+
+    output_dir = Path("./output")
+
+    if tipo == 'pdf':
+        arquivos = sorted(output_dir.glob("top5_oportunidades_*.pdf"), reverse=True)
+        mimetype = 'application/pdf'
+    elif tipo == 'csv':
+        arquivos = sorted(output_dir.glob("top5_oportunidades_*.csv"), reverse=True)
+        mimetype = 'text/csv'
+    else:
+        return jsonify({"error": "Tipo inválido. Use 'pdf' ou 'csv'"}), 400
+
+    if not arquivos:
+        return jsonify({"error": f"Nenhum arquivo {tipo} encontrado"}), 404
+
+    return send_file(
+        arquivos[0],
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=arquivos[0].name
+    )
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
