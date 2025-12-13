@@ -680,17 +680,48 @@ def executar_pipeline():
         resultado = pipeline.executar()
 
         if resultado.get("status") == "success":
+            stats = resultado.get("stats", {})
+            top5 = resultado.get("relatorios", {}).get("top5", {}).get("resumo", {})
+            estatisticas = top5.get("estatisticas", {})
+
+            # Mensagem formatada para email
+            email_message = f"""Pipeline de Leilão executado com SUCESSO!
+
+📊 RESUMO DA ANÁLISE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Total analisados: {stats.get('total_analisado', 0)}
+• Top 5 selecionados: {stats.get('top5_selecionados', 0)}
+• Recomendados COMPRAR: {stats.get('recomendados', 0)}
+
+📈 ESTATÍSTICAS TOP 5
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• ROI Médio: {estatisticas.get('roi_percentual', {}).get('media', 0):.1f}%
+• Margem Segurança: {estatisticas.get('margem_seguranca_pct', {}).get('media', 0):.1f}%
+• Desconto Médio: {estatisticas.get('desconto_pct', {}).get('media', 0):.1f}%
+• Investimento Total: R$ {estatisticas.get('investimento_total', {}).get('total', 0):,.2f}
+
+🏠 IDs DOS IMÓVEIS SELECIONADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join(['• ' + str(id).strip() for id in stats.get('top5_ids', [])])}
+
+📥 DOWNLOAD DOS RELATÓRIOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• PDF: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/pdf
+• CSV: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/csv
+"""
+
             return jsonify({
                 "status": "success",
                 "message": "Pipeline executado com sucesso",
-                "stats": resultado.get("stats"),
+                "email_message": email_message,
+                "stats": stats,
                 "relatorios": {
                     "csv_completo": resultado.get("relatorios", {}).get("csv", {}).get("filepath"),
                     "csv_resumo": resultado.get("relatorios", {}).get("summary", {}).get("filepath"),
                     "top5_csv": resultado.get("relatorios", {}).get("top5", {}).get("csv", {}).get("filepath"),
                     "top5_pdf": resultado.get("relatorios", {}).get("top5", {}).get("pdf", {}).get("filepath"),
                 },
-                "top5_resumo": resultado.get("relatorios", {}).get("top5", {}).get("resumo")
+                "top5_resumo": top5
             }), 200
         else:
             return jsonify({
