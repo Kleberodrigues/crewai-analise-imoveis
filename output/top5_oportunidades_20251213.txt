@@ -1,0 +1,132 @@
+======================================================================
+  Top 5 Oportunidades - Teste
+  Gerado em: 13/12/2025 13:38
+======================================================================
+
+
+======================================================================
+  #1 - Rua das Flores, 123 - Apto 45
+======================================================================
+
+Cidade: SAO PAULO | Bairro: Vila Mariana
+Tipo: Apartamento | Area: 65 m2
+Quartos: 2 | Vagas: 1
+
+Valor Avaliacao: R$ 180,000.00
+Valor Leilao: R$ 95,000.00
+Desconto: 47.2%
+
+Investimento Total: R$ 145,000.00
+Lucro Projetado: R$ 180,000.00
+ROI: 124.1%
+Margem Seguranca: 58.5%
+
+SCORE GERAL: 85.5/100
+RECOMENDACAO: COMPRAR
+RISCO: BAIXO
+
+Link: https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1001
+
+======================================================================
+  #2 - Rua dos Pinheiros, 789 - Apto 301
+======================================================================
+
+Cidade: SAO PAULO | Bairro: Mooca
+Tipo: Apartamento | Area: 55 m2
+Quartos: 2 | Vagas: 1
+
+Valor Avaliacao: R$ 160,000.00
+Valor Leilao: R$ 85,000.00
+Desconto: 46.9%
+
+Investimento Total: R$ 130,000.00
+Lucro Projetado: R$ 140,000.00
+ROI: 107.7%
+Margem Seguranca: 52.3%
+
+SCORE GERAL: 82.4/100
+RECOMENDACAO: COMPRAR
+RISCO: BAIXO
+
+Link: https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1003
+
+======================================================================
+  #3 - Av. Brasil, 456 - Bloco B Apto 12
+======================================================================
+
+Cidade: SANTOS | Bairro: Gonzaga
+Tipo: Apartamento | Area: 72 m2
+Quartos: 3 | Vagas: 1
+
+Valor Avaliacao: R$ 220,000.00
+Valor Leilao: R$ 120,000.00
+Desconto: 45.5%
+
+Investimento Total: R$ 175,000.00
+Lucro Projetado: R$ 165,000.00
+ROI: 94.3%
+Margem Seguranca: 45.2%
+
+SCORE GERAL: 80.1/100
+RECOMENDACAO: COMPRAR
+RISCO: MEDIO
+
+Link: https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1002
+
+======================================================================
+  #4 - Rua do Porto, 555 - Casa 2
+======================================================================
+
+Cidade: GUARUJA | Bairro: Centro
+Tipo: Apartamento | Area: 80 m2
+Quartos: 3 | Vagas: 2
+
+Valor Avaliacao: R$ 280,000.00
+Valor Leilao: R$ 140,000.00
+Desconto: 50.0%
+
+Investimento Total: R$ 200,000.00
+Lucro Projetado: R$ 190,000.00
+ROI: 95.0%
+Margem Seguranca: 42.0%
+
+SCORE GERAL: 77.9/100
+RECOMENDACAO: COMPRAR
+RISCO: MEDIO
+
+Link: https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1005
+
+======================================================================
+  #5 - Rua Augusta, 1000 - Apto 88
+======================================================================
+
+Cidade: SAO PAULO | Bairro: Consolacao
+Tipo: Apartamento | Area: 48 m2
+Quartos: 1 | Vagas: 0
+
+Valor Avaliacao: R$ 140,000.00
+Valor Leilao: R$ 75,000.00
+Desconto: 46.4%
+
+Investimento Total: R$ 115,000.00
+Lucro Projetado: R$ 85,000.00
+ROI: 73.9%
+Margem Seguranca: 38.5%
+
+SCORE GERAL: 77.0/100
+RECOMENDACAO: ANALISAR_MELHOR
+RISCO: MEDIO
+
+Link: https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1004
+
+======================================================================
+  TABELA COMPARATIVA
+======================================================================
+
+#   Endereco                            Valor        ROI      Score  Rec.      
+----------------------------------------------------------------------
+1   Rua das Flores, 123 - Apto 45       R$     95k    124%    86 COMPRAR   
+2   Rua dos Pinheiros, 789 - Apto 30... R$     85k    108%    82 COMPRAR   
+3   Av. Brasil, 456 - Bloco B Apto 1... R$    120k     94%    80 COMPRAR   
+4   Rua do Porto, 555 - Casa 2          R$    140k     95%    78 COMPRAR   
+5   Rua Augusta, 1000 - Apto 88         R$     75k     74%    77 ANALISAR_MELHOR

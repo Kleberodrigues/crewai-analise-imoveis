@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Pipeline de Analise de Leiloes
+  leilao-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leilao-pipeline
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+
+      # Apify
+      - APIFY_TOKEN=${APIFY_TOKEN}
+      - APIFY_ACTOR_ID=${APIFY_ACTOR_ID:-apify/web-scraper}
+
+      # Diretorios
+      - DATA_DIR=/app/data
+      - OUTPUT_DIR=/app/output
+
+      # Timezone
+      - TZ=America/Sao_Paulo
+    volumes:
+      # Persistencia de dados
+      - leilao-data:/app/data
+      - leilao-output:/app/output
+      - leilao-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - leilao-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis para cache (opcional)
+  redis:
+    image: redis:7-alpine
+    container_name: leilao-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - leilao-network
+    command: redis-server --appendonly yes
+
+volumes:
+  leilao-data:
+  leilao-output:
+  leilao-logs:
+  redis-data:
+
+networks:
+  leilao-network:
+    driver: bridge

@@ -22,11 +22,13 @@ Backend com 5 agentes de IA especializados para análise de imóveis de leilão.
 ### Variáveis de Ambiente
 
 ```env
-OPENAI_API_KEY=sk-proj-...
-SUPABASE_URL=https://pxymmcmksyekkjptqblp.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+SUPABASE_SERVICE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 PORT=5000
 ```
+
+Aviso: nunca commit os valores reais destas variáveis. Rotacione chaves se já estiverem expostas.
 
 ### Comandos
 
@@ -83,10 +85,10 @@ Inicia análise de imóvel
 
 ```bash
 # Health check
-curl https://n8n-crewai.zq1zp2.easypanel.host/health
+curl https://your-crewai.example.com/health
 
 # Análise (via n8n webhook)
-curl -X POST https://n8n.kleberodrigues.shop/webhook/analisar-imovel \
+curl -X POST https://your-n8n.example.com/webhook/analisar-imovel \
   -H "Content-Type: application/json" \
   -d '{"imovel_id": "uuid-aqui"}'
 ```

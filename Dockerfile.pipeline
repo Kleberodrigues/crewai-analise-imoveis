@@ -1,0 +1,48 @@
+# Dockerfile para Pipeline de Analise de Leiloes
+FROM python:3.11-slim
+
+# Variaveis de ambiente
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV TZ=America/Sao_Paulo
+
+# Diretorio de trabalho
+WORKDIR /app
+
+# Instala dependencias do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    cron \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia requirements primeiro (para cache)
+COPY requirements.txt .
+
+# Instala dependencias Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia codigo
+COPY . .
+
+# Cria diretorios necessarios
+RUN mkdir -p /app/data /app/output /app/logs
+
+# Permissoes
+RUN chmod +x /app/scheduler.py || true
+
+# Configura cron para rodar 2x por semana (segunda e quinta as 8h)
+RUN echo "0 8 * * 1,4 cd /app && python main_pipeline.py >> /app/logs/pipeline.log 2>&1" > /etc/cron.d/leilao-cron
+RUN chmod 0644 /etc/cron.d/leilao-cron
+RUN crontab /etc/cron.d/leilao-cron
+
+# Expose porta para API
+EXPOSE 5000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+# Comando padrao - inicia API e cron
+CMD ["sh", "-c", "cron && gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 300 api:app"]

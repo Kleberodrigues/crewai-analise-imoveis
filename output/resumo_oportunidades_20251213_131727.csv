@@ -1,0 +1,2 @@
+﻿id_imovel;endereco;bairro;cidade;valor_minimo_leilao;desconto_percentual;investimento_total_6m;cenario_preco_venda;cenario_lucro_liquido;cenario_roi_percentual;score_geral;recomendacao;nivel_risco
+TEST001;Rua Teste, 123;Vila Mariana;SAO PAULO;120000;40;180000;0;0;45;77;COMPRAR;MEDIO

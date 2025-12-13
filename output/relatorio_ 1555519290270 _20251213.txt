@@ -1,0 +1,136 @@
+============================================================
+RELATORIO DE ANALISE - LEILAO IMOVEL
+============================================================
+
+{
+  "id_imovel": " 1555519290270 ",
+  "uf": "SP",
+  "cidade": "SAO PAULO",
+  "bairro": "LIBERDADE",
+  "endereco": "RUA BARAO DE IGUAPE, N. 604, Apto 24,",
+  "preco": 135326.01,
+  "valor_avaliacao": 215000.0,
+  "desconto": 37.06,
+  "descricao": "Apartamento, 65.59 de área total, 50.57 de área privativa, 0.00 de área do terreno,  1 qto(s), a.serv, WC, 1 sala(s), cozinha.",
+  "modalidade": "Venda Online",
+  "link": "https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=1555519290270",
+  "tipo_imovel": "Apartamento",
+  "area_privativa": 50.57,
+  "area_total": 65.59,
+  "quartos": 1,
+  "vagas": 0,
+  "praca": "2a Praca",
+  "data_analise": "2025-12-13",
+  "analise_edital": {
+    "ocupacao": "ocupado",
+    "debitos_iptu": 5000,
+    "debitos_condominio": 10000,
+    "total_debitos": 15000,
+    "comissao_leiloeiro_pct": 5,
+    "riscos": [
+      "Imovel ocupado (estimado)",
+      "Debitos estimados"
+    ],
+    "score": 50.0
+  },
+  "analise_matricula": {
+    "gravames_extintos": [
+      "Hipoteca CEF"
+    ],
+    "gravames_transferidos": [],
+    "valor_gravames": 0,
+    "score": 100
+  },
+  "pesquisa_mercado": {
+    "preco_m2": 8500,
+    "preco_m2_min": 7225,
+    "preco_m2_max": 9775,
+    "valor_estimado": 429845.0,
+    "valor_min": 365368.25,
+    "valor_max": 494321.75,
+    "condominio_mensal": 650,
+    "iptu_mensal": 190,
+    "aluguel_estimado": 1769.95,
+    "liquidez": "media",
+    "tempo_venda_dias": 90,
+    "demanda": "media",
+    "dificuldade_venda": "moderada",
+    "fonte": "base_regional",
+    "confianca": "media",
+    "amostras": 50,
+    "imoveis_similares": [],
+    "score_localizacao": 94.65,
+    "score_liquidez": 65.0
+  },
+  "custos": {
+    "custos_aquisicao": {
+      "valor_arrematacao": 135326.01,
+      "comissao_leiloeiro": 6766.3,
+      "itbi": 4059.78,
+      "escritura": 2200,
+      "registro": 1800,
+      "certidoes": 800.0,
+      "honorarios_advogado": 4000,
+      "custo_desocupacao": 10000,
+      "debitos_edital": 15000,
+      "gravames_matricula": 0,
+      "custo_reforma": 15171.0
+    },
+    "total_custos_aquisicao": 59797.08,
+    "investimento_total": 195123.09,
+    "custos_manutencao": {
+      "condominio": 3900,
+      "iptu": 1140,
+      "luz_agua": 600,
+      "seguro": 300,
+      "meses": 6
+    },
+    "total_manutencao": 5940,
+    "investimento_total_com_manutencao": 201063.09,
+    "custos_venda": {
+      "comissao_corretor": 24501.17,
+      "irpf": 27418.27,
+      "total_custos_venda": 51919.43
+    },
+    "resultado_venda": {
+      "preco_venda": 408352.75,
+      "lucro_bruto": 182788.49,
+      "lucro_liquido": 155370.22,
+      "roi_total_percentual": 77.27,
+      "roi_mensal_percentual": 12.88,
+      "margem_seguranca_percentual": 50.76,
+      "comparativo_cdi": 13069.1,
+      "diferenca_vs_cdi": 142301.12
+    },
+    "resumo": {
+      "valor_arrematacao": 135326.01,
+      "total_custos": 65737.08,
+      "investimento_final": 201063.09,
+      "cidade": "SAO PAULO",
+      "ocupado": true,
+      "meses_cenario": 6
+    }
+  },
+  "scores": {
+    "edital": 50.0,
+    "matricula": 100,
+    "localizacao": 94.65,
+    "financeiro": 67.85,
+    "liquidez": 65.0,
+    "geral": 77.12
+  },
+  "recomendacao": "COMPRAR",
+  "nivel_risco": "BAIXO",
+  "justificativa": "Score de 77/100 indica excelente oportunidade. Recomendamos prosseguir com analise detalhada do edital.",
+  "pontos_atencao": [
+    "Imovel ocupado - risco de demora na desocupacao"
+  ],
+  "proximos_passos": [
+    "Baixar e analisar edital completo",
+    "Solicitar matricula atualizada no cartorio",
+    "Verificar possibilidade de acordo com ocupante",
+    "Pesquisar historico do imovel",
+    "Visitar o imovel (exterior)",
+    "Consultar advogado especialista em leiloes"
+  ]
+}

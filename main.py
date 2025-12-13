@@ -19,19 +19,104 @@ logger = logging.getLogger(__name__)
 
 # Configuração da aplicação
 app = Flask(__name__)
-CORS(app)
+# CORS: permitir configurar origens via env (CORS_ALLOWED_ORIGINS="http://localhost:3000,https://app.example.com")
+_allowed = os.getenv("CORS_ALLOWED_ORIGINS")
+if _allowed:
+    _origins = [o.strip() for o in _allowed.split(',') if o.strip()]
+    CORS(app, resources={r"/*": {"origins": _origins}})
+else:
+    CORS(app)
 
-# Configuração Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://pxymmcmksyekkjptqblp.supabase.co")
+# Configuração Supabase (com validação de DNS)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = None
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logging.warning("SUPABASE_URL/SUPABASE_SERVICE_KEY não configurados. API funcionará sem persistência.")
+else:
+    try:
+        import socket
+        host = SUPABASE_URL.replace("https://", "").replace("http://", "").split("/")[0]
+        socket.setdefaulttimeout(5)
+        socket.getaddrinfo(host, 443)
+        socket.setdefaulttimeout(None)
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logging.info("Supabase conectado com sucesso")
+    except socket.gaierror:
+        logging.warning("Supabase DNS não resolvido - projeto pode estar pausado. API funcionará sem persistência.")
+    except Exception as e:
+        logging.warning(f"Supabase indisponível: {e}. API funcionará sem persistência.")
 
 # Configuração LLM
-llm = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0.2,
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    logging.warning("OPENAI_API_KEY não configurada. Requisições à IA irão falhar.")
+llm = ChatOpenAI(model="gpt-4o", temperature=0.2, api_key=OPENAI_API_KEY)
+
+# Segurança e controle
+API_TOKEN = os.getenv("CREWAI_API_TOKEN")  # Se definido, exige header x-api-key
+MAX_BODY_KB = int(os.getenv("MAX_BODY_KB", "256"))
+DEBUG_SAFE_ERRORS = os.getenv("CREWAI_DEBUG", "0").lower() in ("1", "true", "yes")
+
+@app.before_request
+def _pre_checks():
+    # Limitar tamanho do corpo
+    cl = request.content_length or 0
+    if cl > MAX_BODY_KB * 1024:
+        return jsonify({"erro": "Payload muito grande"}), 413
+    # Autenticação via token (opcional)
+    if API_TOKEN and request.path in ("/analisar", "/test") and request.method in ("POST", "GET"):
+        if request.headers.get("x-api-key") != API_TOKEN:
+            return jsonify({"erro": "Não autorizado"}), 401
+
+def _normalize_float(v, default=0.0):
+    try:
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            s = v.replace('.', '').replace(',', '.') if ',' in v else v
+            return float(s)
+        return float(default)
+    except Exception:
+        return float(default)
+
+def _normalize_result(res):
+    import json as _json
+    if isinstance(res, str):
+        try:
+            res = _json.loads(res)
+        except Exception:
+            res = {"justificativa_ia": res}
+    if not isinstance(res, dict):
+        res = {}
+    out = dict(res)
+    numeric_keys = [
+        "valor_arrematacao","custo_desocupacao","comissao_leiloeiro","itbi","escritura_registro",
+        "taxas_cartoriais","honorarios_advocaticios","total_custos_diretos","iptu_mensal","condominio_mensal",
+        "custo_reforma","custos_totais","preco_venda_estimado","comissao_corretor","aluguel_estimado_mensal",
+        "lucro_bruto","imposto_renda_lucro","lucro_liquido","roi_percentual","score_geral","score_localizacao",
+        "analise_edital_score","analise_matricula_score"
+    ]
+    for k in numeric_keys:
+        if k in out:
+            out[k] = _normalize_float(out.get(k, 0.0))
+    list_keys = ["pontos_atencao","proximos_passos","analise_edital_riscos","analise_matricula_gravames"]
+    for k in list_keys:
+        v = out.get(k)
+        if v is None:
+            out[k] = []
+        elif not isinstance(v, list):
+            out[k] = [str(v)]
+    text_keys = ["justificativa_ia","analise_edital_resumo","analise_matricula_resumo","analise_localizacao_sp"]
+    for k in text_keys:
+        if k in out and out[k] is not None:
+            out[k] = str(out[k])
+    rec = str(out.get("recomendacao", "analisar_melhor")).lower()
+    if rec not in ("comprar","analisar_melhor","evitar"):
+        rec = "analisar_melhor"
+    out["recomendacao"] = rec
+    return out
 
 # ==================== AGENTES ====================
 
@@ -495,6 +580,7 @@ def analisar_imovel():
         # Criar e executar Crew
         crew = criar_crew_analise(dados_imovel)
         resultado = crew.kickoff()
+        resultado = _normalize_result(resultado)
 
         # Processar resultado
         tempo_fim = time.time()
@@ -520,9 +606,9 @@ def analisar_imovel():
             "detalhes": str(e)
         }), 500
 
-@app.route('/test', methods=['POST'])
+@app.route('/test', methods=['POST', 'GET'])
 def test_analise():
-    """Endpoint de teste com dados mock"""
+    """Endpoint de teste com dados mock (não requer request body)"""
     dados_mock = {
         "id": "123e4567-e89b-12d3-a456-426614174000",
         "codigo_imovel": "SP-TEST-001",
@@ -545,7 +631,106 @@ def test_analise():
         "situacao": "disponivel"
     }
 
-    return analisar_imovel()
+    try:
+        tempo_inicio = time.time()
+        crew = criar_crew_analise(dados_mock)
+        resultado = crew.kickoff()
+        resultado = _normalize_result(resultado)
+        tempo_fim = time.time()
+        return jsonify({
+            "imovel_id": dados_mock.get("id"),
+            "codigo_imovel": dados_mock.get("codigo_imovel"),
+            "status": "concluido",
+            "tempo_processamento_segundos": int(tempo_fim - tempo_inicio),
+            "analise": resultado
+        }), 200
+    except Exception as e:
+        logger.error(f"Erro no teste: {str(e)}")
+        body = {"erro": "Falha ao executar teste"}
+        if DEBUG_SAFE_ERRORS:
+            body["detalhes"] = str(e)
+        return jsonify(body), 500
+
+# ==================== PIPELINE ENDPOINTS ====================
+
+@app.route('/pipeline/executar', methods=['POST'])
+def executar_pipeline():
+    """
+    Executa o pipeline completo de análise de imóveis de leilão.
+    Coleta dados da Caixa, analisa e gera relatórios top 5.
+
+    Parâmetros opcionais (JSON body):
+    {
+        "preco_max": 150000,
+        "tipo": "Apartamento",
+        "quantidade_top": 5
+    }
+    """
+    try:
+        from main_pipeline import PipelineLeilao
+        import threading
+
+        # Parâmetros opcionais
+        params = request.get_json() or {}
+
+        logger.info("Iniciando execução do pipeline via API...")
+
+        # Executa o pipeline
+        pipeline = PipelineLeilao()
+        resultado = pipeline.executar()
+
+        if resultado.get("status") == "success":
+            return jsonify({
+                "status": "success",
+                "message": "Pipeline executado com sucesso",
+                "stats": resultado.get("stats"),
+                "relatorios": {
+                    "csv_completo": resultado.get("relatorios", {}).get("csv", {}).get("filepath"),
+                    "csv_resumo": resultado.get("relatorios", {}).get("summary", {}).get("filepath"),
+                    "top5_csv": resultado.get("relatorios", {}).get("top5", {}).get("csv", {}).get("filepath"),
+                    "top5_pdf": resultado.get("relatorios", {}).get("top5", {}).get("pdf", {}).get("filepath"),
+                },
+                "top5_resumo": resultado.get("relatorios", {}).get("top5", {}).get("resumo")
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Erro na execução do pipeline",
+                "error": resultado.get("error"),
+                "stats": resultado.get("stats")
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Erro ao executar pipeline: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Erro interno ao executar pipeline",
+            "error": str(e)
+        }), 500
+
+
+@app.route('/pipeline/status', methods=['GET'])
+def pipeline_status():
+    """Retorna informações sobre o último pipeline executado"""
+    from pathlib import Path
+    import glob
+
+    output_dir = Path("./output")
+
+    # Busca últimos arquivos top5
+    top5_csvs = sorted(output_dir.glob("top5_oportunidades_*.csv"), reverse=True)
+    top5_pdfs = sorted(output_dir.glob("top5_oportunidades_*.pdf"), reverse=True)
+
+    return jsonify({
+        "status": "ok",
+        "output_dir": str(output_dir.absolute()),
+        "ultimos_relatorios": {
+            "top5_csv": str(top5_csvs[0]) if top5_csvs else None,
+            "top5_pdf": str(top5_pdfs[0]) if top5_pdfs else None,
+        },
+        "total_arquivos_output": len(list(output_dir.glob("*")))
+    })
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
