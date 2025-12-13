@@ -653,6 +653,124 @@ def test_analise():
 
 # ==================== PIPELINE ENDPOINTS ====================
 
+def _formatar_detalhe_imovel(ranking: int, imovel: dict) -> str:
+    """
+    Formata detalhes completos de um imóvel para email.
+    Inclui todos os 9 itens solicitados pelo usuário.
+    """
+    # Dados básicos
+    id_imovel = imovel.get("id_imovel", "N/A")
+    endereco = imovel.get("endereco", "N/A")
+    bairro = imovel.get("bairro", "N/A")
+    cidade = imovel.get("cidade", "SP")
+    preco = imovel.get("preco", 0)
+    desconto = imovel.get("desconto", 0)
+    link = imovel.get("link", "")
+
+    # Dados de custos
+    custos = imovel.get("custos", {})
+    custos_aquisicao = custos.get("custos_aquisicao", {})
+    custos_venda = custos.get("custos_venda", {})
+    resultado = custos.get("resultado_venda", {})
+    investimento_total = custos.get("investimento_total_com_manutencao", 0)
+
+    # Dados de mercado
+    mercado = imovel.get("pesquisa_mercado", {})
+    preco_m2 = mercado.get("preco_m2", 0)
+    condominio = mercado.get("condominio_mensal", 0)
+    similares = mercado.get("imoveis_similares", [])
+
+    # Dados da matrícula
+    matricula = imovel.get("analise_matricula", {})
+    valor_gravames = matricula.get("valor_gravames", 0)
+    gravames_extintos = matricula.get("gravames_extintos", [])
+
+    # Dados do edital
+    edital = imovel.get("analise_edital", {})
+    ocupacao = edital.get("ocupacao", "desconhecido")
+    debitos_iptu = edital.get("debitos_iptu", 0)
+    debitos_condo = edital.get("debitos_condominio", 0)
+    total_debitos = edital.get("total_debitos", 0)
+
+    # Scores
+    scores = imovel.get("scores", {})
+    score_geral = scores.get("geral", 0)
+    recomendacao = imovel.get("recomendacao", "N/A")
+    nivel_risco = imovel.get("nivel_risco", "N/A")
+
+    # Formata links de mercado
+    links_mercado = ""
+    if similares:
+        for i, sim in enumerate(similares[:3], 1):
+            link_sim = sim.get("link", "")
+            if link_sim:
+                links_mercado += f"      • {link_sim}\n"
+    if not links_mercado:
+        links_mercado = "      • Pesquisa baseada em dados regionais\n"
+
+    # Formata dívidas da matrícula
+    dividas_matricula = ""
+    if valor_gravames > 0:
+        dividas_matricula = f"R$ {valor_gravames:,.2f}"
+    elif gravames_extintos:
+        dividas_matricula = f"EXTINTOS: {', '.join(gravames_extintos)}"
+    else:
+        dividas_matricula = "Nenhuma encontrada"
+
+    return f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏠 #{ranking} - {endereco} - {bairro} - {cidade}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 DADOS BÁSICOS
+   • ID: {id_imovel}
+   • Valor Leilão: R$ {preco:,.2f}
+   • Desconto: {desconto:.1f}%
+   • Link Caixa: {link}
+
+💰 CUSTOS DE AQUISIÇÃO
+   1️⃣ Comissão Leiloeiro (5%): R$ {custos_aquisicao.get('comissao_leiloeiro', 0):,.2f}
+   2️⃣ Custos Cartório:
+      • Escritura: R$ {custos_aquisicao.get('escritura', 0):,.2f}
+      • Registro: R$ {custos_aquisicao.get('registro', 0):,.2f}
+      • Certidões: R$ {custos_aquisicao.get('certidoes', 0):,.2f}
+   3️⃣ ITBI ({3 if cidade == 'SAO PAULO' else 2}%): R$ {custos_aquisicao.get('itbi', 0):,.2f}
+   • Honorários Advogado: R$ {custos_aquisicao.get('honorarios_advogado', 0):,.2f}
+   • Custo Desocupação: R$ {custos_aquisicao.get('custo_desocupacao', 0):,.2f}
+   • Débitos Edital: R$ {custos_aquisicao.get('debitos_edital', 0):,.2f}
+   • Reforma Estimada: R$ {custos_aquisicao.get('custo_reforma', 0):,.2f}
+   ▸ TOTAL INVESTIMENTO: R$ {investimento_total:,.2f}
+
+📊 PESQUISA DE MERCADO
+   4️⃣ Links de Referência:
+{links_mercado}   • Preço/m² Região: R$ {preco_m2:,.2f}
+   5️⃣ Condomínio Mensal: R$ {condominio:,.2f}
+
+📜 ANÁLISE DA MATRÍCULA
+   6️⃣ Dívidas/Gravames: {dividas_matricula}
+   • Score Matrícula: {scores.get('matricula', 0)}/100
+
+📄 DADOS DO EDITAL
+   7️⃣ Informações:
+   • Ocupação: {ocupacao.upper()}
+   • Débitos IPTU: R$ {debitos_iptu:,.2f}
+   • Débitos Condomínio: R$ {debitos_condo:,.2f}
+   • Total Débitos Edital: R$ {total_debitos:,.2f}
+
+💸 CUSTOS DE VENDA (cenário 6 meses)
+   8️⃣ IRPF Ganho Capital: R$ {custos_venda.get('irpf', 0):,.2f}
+   9️⃣ Comissão Corretor (6%): R$ {custos_venda.get('comissao_corretor', 0):,.2f}
+
+📈 RESULTADO PROJETADO
+   • Preço Venda Estimado: R$ {resultado.get('preco_venda', 0):,.2f}
+   • Lucro Líquido: R$ {resultado.get('lucro_liquido', 0):,.2f}
+   • ROI: {resultado.get('roi_total_percentual', 0):.1f}%
+   • Margem Segurança: {resultado.get('margem_seguranca_percentual', 0):.1f}%
+
+🎯 SCORE: {score_geral:.0f}/100 | RISCO: {nivel_risco} | RECOMENDAÇÃO: {recomendacao}
+"""
+
+
 @app.route('/pipeline/executar', methods=['POST'])
 def executar_pipeline():
     """
@@ -681,33 +799,44 @@ def executar_pipeline():
 
         if resultado.get("status") == "success":
             stats = resultado.get("stats", {})
-            top5 = resultado.get("relatorios", {}).get("top5", {}).get("resumo", {})
-            estatisticas = top5.get("estatisticas", {})
+            top5_data = resultado.get("relatorios", {}).get("top5", {})
+            top5_resumo = top5_data.get("resumo", {})
+            estatisticas = top5_resumo.get("estatisticas", {})
+            analises_completas = top5_data.get("analises_completas", [])
 
-            # Mensagem formatada para email
-            email_message = f"""Pipeline de Leilão executado com SUCESSO!
+            # Gera detalhes formatados para cada imóvel
+            detalhes_imoveis = ""
+            for i, imovel in enumerate(analises_completas, 1):
+                detalhes_imoveis += _formatar_detalhe_imovel(i, imovel)
 
-📊 RESUMO DA ANÁLISE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Mensagem formatada para email com detalhes completos
+            email_message = f"""🎉 Pipeline de Leilão executado com SUCESSO!
+
+📊 RESUMO GERAL DA ANÁLISE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Total analisados: {stats.get('total_analisado', 0)}
 • Top 5 selecionados: {stats.get('top5_selecionados', 0)}
 • Recomendados COMPRAR: {stats.get('recomendados', 0)}
 
-📈 ESTATÍSTICAS TOP 5
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 MÉDIAS DO TOP 5
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • ROI Médio: {estatisticas.get('roi_percentual', {}).get('media', 0):.1f}%
 • Margem Segurança: {estatisticas.get('margem_seguranca_pct', {}).get('media', 0):.1f}%
 • Desconto Médio: {estatisticas.get('desconto_pct', {}).get('media', 0):.1f}%
 • Investimento Total: R$ {estatisticas.get('investimento_total', {}).get('total', 0):,.2f}
 
-🏠 IDs DOS IMÓVEIS SELECIONADOS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{chr(10).join(['• ' + str(id).strip() for id in stats.get('top5_ids', [])])}
+{'='*60}
+📋 DETALHAMENTO COMPLETO DOS 5 MELHORES IMÓVEIS
+{'='*60}
+{detalhes_imoveis}
 
-📥 DOWNLOAD DOS RELATÓRIOS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📥 DOWNLOAD DOS RELATÓRIOS COMPLETOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • PDF: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/pdf
 • CSV: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/csv
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 Gerado automaticamente pelo Pipeline de Análise de Leilões
 """
 
             return jsonify({
@@ -718,10 +847,11 @@ def executar_pipeline():
                 "relatorios": {
                     "csv_completo": resultado.get("relatorios", {}).get("csv", {}).get("filepath"),
                     "csv_resumo": resultado.get("relatorios", {}).get("summary", {}).get("filepath"),
-                    "top5_csv": resultado.get("relatorios", {}).get("top5", {}).get("csv", {}).get("filepath"),
-                    "top5_pdf": resultado.get("relatorios", {}).get("top5", {}).get("pdf", {}).get("filepath"),
+                    "top5_csv": top5_data.get("csv", {}).get("filepath"),
+                    "top5_pdf": top5_data.get("pdf", {}).get("filepath"),
                 },
-                "top5_resumo": top5
+                "top5_resumo": top5_resumo,
+                "top5_analises": analises_completas
             }), 200
         else:
             return jsonify({

@@ -525,7 +525,8 @@ class PipelineLeilao:
             "top5": {
                 "csv": csv_top5_result,
                 "pdf": pdf_top5_result,
-                "resumo": resumo_top5
+                "resumo": resumo_top5,
+                "analises_completas": top5  # Lista completa dos 5 imoveis com todos os dados
             }
         }
 
