@@ -19,7 +19,7 @@ bcrypt==4.1.2
 python-jose[cryptography]==3.3.0
 
 # Rate Limiting e Cache
-redis==5.0.0
+redis==4.6.0
 flask-limiter==3.5.0
 flask-caching==2.1.0
 
