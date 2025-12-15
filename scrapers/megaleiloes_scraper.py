@@ -20,32 +20,30 @@ class MegaLeiloesScraper(BaseLeilaoScraper):
     FONTE_NOME = "mega_leiloes"
     BASE_URL = "https://www.megaleiloes.com.br"
 
-    # URL de listagem com filtros: apartamento + SP + extrajudicial
-    LISTAGEM_URL = "/imoveis/apartamentos"
+    # URL de listagem - apartamentos em SP
+    LISTAGEM_URL = "/imoveis/apartamentos/sp"
 
     # Parametros de filtro
-    FILTROS_URL = {
-        "estado": "sp",
-        "tipo_leilao": "extrajudicial",
-        "ordenar": "preco_asc"
-    }
+    FILTROS_URL = {}
 
-    # Seletores CSS
+    # Seletores CSS - baseado na estrutura real do site
     SELETORES = {
-        "card_imovel": ".leilao-card, .imovel-card, .property-item, .auction-item",
-        "link_imovel": "a[href*='/leilao/'], a[href*='/imovel/']",
-        "preco": ".valor, .preco, .price, .lance-atual",
-        "endereco": ".endereco, .local, .address, .localizacao",
-        "area": ".area, .metros, .m2, [class*='area']",
-        "quartos": ".quartos, .dormitorios, .dorms, [class*='quarto']",
-        "desconto": ".desconto, .economia, .discount",
-        "avaliacao": ".avaliacao, .valor-avaliado, .valor-mercado",
-        "imagem": "img.foto, img.thumbnail, img.imovel",
-        "data_leilao": ".data, .data-leilao, .prazo",
-        "praca": ".praca, .etapa, .round",
-        "modalidade": ".modalidade, .tipo-venda",
-        "paginacao": ".pagination a.next, .proxima-pagina, [rel='next']",
-        "total_resultados": ".total-resultados, .count, .quantidade"
+        "card_imovel": ".card",
+        "link_imovel": "a",
+        "preco": ".card-price, .card-instance-value",
+        "endereco": ".card-locality, .card-title",
+        "titulo": ".card-title",
+        "area": ".card-content [class*='area']",
+        "quartos": ".card-content [class*='quarto'], .card-content [class*='dorm']",
+        "desconto": ".card-status",
+        "avaliacao": ".card-instance-value",
+        "imagem": ".card-image img",
+        "data_leilao": ".card-first-instance-date, .card-second-instance-date",
+        "praca": ".card-instance-title",
+        "modalidade": ".card-status",
+        "banco": ".card-bank img",
+        "paginacao": ".pagination a.next, a[rel='next'], .page-next",
+        "total_resultados": ".results-count, .total"
     }
 
     async def coletar_listagem(self) -> List[Dict]:
@@ -56,9 +54,12 @@ class MegaLeiloesScraper(BaseLeilaoScraper):
         imoveis = []
         url_base = f"{self.BASE_URL}{self.LISTAGEM_URL}"
 
-        # Monta URL com filtros
-        params = "&".join([f"{k}={v}" for k, v in self.FILTROS_URL.items()])
-        url_completa = f"{url_base}?{params}"
+        # Monta URL com filtros (se houver)
+        if self.FILTROS_URL:
+            params = "&".join([f"{k}={v}" for k, v in self.FILTROS_URL.items()])
+            url_completa = f"{url_base}?{params}"
+        else:
+            url_completa = url_base
 
         try:
             logger.info(f"[{self.FONTE_NOME}] Acessando {url_completa}")
@@ -109,8 +110,15 @@ class MegaLeiloesScraper(BaseLeilaoScraper):
         """Extrai imoveis da pagina atual"""
         imoveis = []
 
-        await self.esperar_elemento(self.SELETORES["card_imovel"])
-        cards = await self.page.query_selector_all(self.SELETORES["card_imovel"])
+        # Aguarda cards carregarem
+        try:
+            await self.page.wait_for_selector(".card", timeout=10000)
+        except:
+            logger.warning(f"[{self.FONTE_NOME}] Timeout aguardando .card")
+
+        # Busca todos os cards na pagina
+        cards = await self.page.query_selector_all(".card")
+        logger.info(f"[{self.FONTE_NOME}] {len(cards)} cards encontrados na pagina")
 
         for card in cards:
             try:
@@ -127,70 +135,67 @@ class MegaLeiloesScraper(BaseLeilaoScraper):
         dados = {}
 
         try:
-            # Link do imovel
-            link_elem = await card.query_selector(self.SELETORES["link_imovel"])
+            # Link do imovel - busca link com /imoveis/ no href
+            link_elem = await card.query_selector("a[href*='/imoveis/']")
             if link_elem:
                 href = await link_elem.get_attribute("href")
                 if href:
-                    dados['link'] = href if href.startswith('http') else f"{self.BASE_URL}{href}"
-                    # ID do imovel
-                    match = re.search(r'/leilao/(\d+)|/imovel/(\d+)|/(\d+)', href)
+                    dados['link'] = href
+                    # ID do imovel - extrai codigo X123456 do final da URL
+                    match = re.search(r'-x(\d+)', href, re.IGNORECASE)
                     if match:
-                        id_match = match.group(1) or match.group(2) or match.group(3)
-                        dados['id_imovel'] = f"MEGA-{id_match}"
+                        dados['id_imovel'] = f"MEGA-{match.group(1)}"
+                    else:
+                        # Tenta extrair qualquer numero
+                        match = re.search(r'/(\d+)', href)
+                        if match:
+                            dados['id_imovel'] = f"MEGA-{match.group(1)}"
 
-            # Preco
-            preco_elem = await card.query_selector(self.SELETORES["preco"])
+            # Se nao encontrou link valido, pula este card
+            if not dados.get('link'):
+                return dados
+
+            # Preco - .card-price
+            preco_elem = await card.query_selector(".card-price")
             if preco_elem:
                 preco_texto = await preco_elem.inner_text()
                 dados['preco'] = self.extrair_preco(preco_texto)
 
-            # Endereco
-            endereco_elem = await card.query_selector(self.SELETORES["endereco"])
-            if endereco_elem:
-                endereco = await endereco_elem.inner_text()
-                dados['endereco'] = endereco.strip()
-                self._extrair_localizacao(endereco, dados)
+            # Titulo/Endereco - .card-title
+            titulo_elem = await card.query_selector(".card-title")
+            if titulo_elem:
+                titulo = await titulo_elem.inner_text()
+                dados['endereco'] = titulo.strip()
 
-            # Area
-            area_elem = await card.query_selector(self.SELETORES["area"])
-            if area_elem:
-                area_texto = await area_elem.inner_text()
-                dados['area_privativa'] = self.extrair_area(area_texto)
+            # Localidade - .card-locality
+            local_elem = await card.query_selector(".card-locality")
+            if local_elem:
+                local = await local_elem.inner_text()
+                dados['endereco'] = f"{dados.get('endereco', '')} - {local.strip()}"
+                self._extrair_localizacao(local, dados)
 
-            # Quartos
-            quartos_elem = await card.query_selector(self.SELETORES["quartos"])
-            if quartos_elem:
-                quartos_texto = await quartos_elem.inner_text()
-                dados['quartos'] = self.extrair_numero(quartos_texto)
+            # Numero do lote - .card-number
+            numero_elem = await card.query_selector(".card-number")
+            if numero_elem:
+                numero = await numero_elem.inner_text()
+                if not dados.get('id_imovel'):
+                    dados['id_imovel'] = f"MEGA-{numero.strip()}"
 
-            # Desconto
-            desconto_elem = await card.query_selector(self.SELETORES["desconto"])
-            if desconto_elem:
-                desconto_texto = await desconto_elem.inner_text()
-                dados['desconto'] = self.extrair_numero(desconto_texto)
-
-            # Valor de avaliacao
-            avaliacao_elem = await card.query_selector(self.SELETORES["avaliacao"])
-            if avaliacao_elem:
-                avaliacao_texto = await avaliacao_elem.inner_text()
-                dados['valor_avaliacao'] = self.extrair_preco(avaliacao_texto)
-
-            # Imagem
-            img_elem = await card.query_selector(self.SELETORES["imagem"])
+            # Imagem - .card-image img
+            img_elem = await card.query_selector(".card-image img")
             if img_elem:
                 src = await img_elem.get_attribute("src") or await img_elem.get_attribute("data-src")
                 if src:
                     dados['imagens'] = [src]
 
-            # Data do leilao
-            data_elem = await card.query_selector(self.SELETORES["data_leilao"])
+            # Data do leilao - datas das pracas
+            data_elem = await card.query_selector(".card-first-instance-date, .card-second-instance-date")
             if data_elem:
                 data_texto = await data_elem.inner_text()
                 dados['data_leilao'] = data_texto.strip()
 
-            # Praca
-            praca_elem = await card.query_selector(self.SELETORES["praca"])
+            # Praca - .card-instance-title
+            praca_elem = await card.query_selector(".card-instance-title")
             if praca_elem:
                 praca_texto = await praca_elem.inner_text()
                 if '2' in praca_texto or 'segunda' in praca_texto.lower():
@@ -198,9 +203,24 @@ class MegaLeiloesScraper(BaseLeilaoScraper):
                 else:
                     dados['praca'] = '1a Praca'
 
+            # Valor da instancia (praca) - .card-instance-value
+            valor_elem = await card.query_selector(".card-instance-value")
+            if valor_elem:
+                valor_texto = await valor_elem.inner_text()
+                valor = self.extrair_preco(valor_texto)
+                if valor and not dados.get('preco'):
+                    dados['preco'] = valor
+
+            # Banco - .card-bank img (alt text)
+            banco_elem = await card.query_selector(".card-bank img")
+            if banco_elem:
+                banco_alt = await banco_elem.get_attribute("alt")
+                if banco_alt:
+                    dados['banco'] = banco_alt.strip()
+
             # Define tipo
             dados['tipo_imovel'] = 'Apartamento'
-            dados['modalidade'] = dados.get('modalidade', 'Venda Online')
+            dados['modalidade'] = 'Venda Online'
 
         except Exception as e:
             logger.warning(f"[{self.FONTE_NOME}] Erro ao extrair dados do card: {e}")
