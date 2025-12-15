@@ -233,7 +233,7 @@ def criar_revisor_senior() -> Agent:
         Seu objetivo é proteger o investidor de más decisões e destacar as boas oportunidades.""",
         verbose=True,
         llm=get_llm(),
-        allow_delegation=True
+        allow_delegation=False  # Desabilitado para evitar bug de validacao do CrewAI
     )
 
 # ==================== TASKS ====================
