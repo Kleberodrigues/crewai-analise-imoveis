@@ -218,7 +218,9 @@ class PipelineLeilao:
         Mantido para compatibilidade.
         """
         # Usa o novo sistema multi-fonte
-        return self.coletar_multifonte(usar_scrapers=True)
+        # NOTA: Scrapers desabilitados por limitacao de memoria do servidor
+        # Para reativar, mude para usar_scrapers=True (requer 2GB+ RAM)
+        return self.coletar_multifonte(usar_scrapers=False)
 
     def consolidar_imoveis(self, caixa: List[Dict], zuk: List[Dict]) -> List[Dict]:
         """Consolida e remove duplicatas"""
