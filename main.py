@@ -48,11 +48,18 @@ else:
     except Exception as e:
         logging.warning(f"Supabase indisponível: {e}. API funcionará sem persistência.")
 
-# Configuração LLM
+# Configuração LLM (lazy initialization para não quebrar o startup)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    logging.warning("OPENAI_API_KEY não configurada. Requisições à IA irão falhar.")
-llm = ChatOpenAI(model="gpt-4o", temperature=0.2, api_key=OPENAI_API_KEY)
+llm = None
+
+def get_llm():
+    """Retorna o LLM, inicializando se necessário"""
+    global llm
+    if llm is None:
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY não configurada")
+        llm = ChatOpenAI(model="gpt-4o", temperature=0.2, api_key=OPENAI_API_KEY)
+    return llm
 
 # Segurança e controle
 API_TOKEN = os.getenv("CREWAI_API_TOKEN")  # Se definido, exige header x-api-key
@@ -134,7 +141,7 @@ def criar_analista_financeiro() -> Agent:
         Você também sabe estimar valores de mercado e aluguel baseado na região e tipo de imóvel.
         Seu foco é entregar uma análise financeira conservadora e realista.""",
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         allow_delegation=False
     )
 
@@ -154,7 +161,7 @@ def criar_analista_localizacao() -> Agent:
 
         Você atribui um score de 0-100 baseado em critérios objetivos de localização.""",
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         allow_delegation=False
     )
 
@@ -176,7 +183,7 @@ def criar_analista_juridico() -> Agent:
 
         Você atribui um score de 0-100 ao edital, onde 100 = muito seguro e 0 = evitar.""",
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         allow_delegation=False
     )
 
@@ -197,7 +204,7 @@ def criar_analista_matricula() -> Agent:
         Você classifica os gravames como: eliminados no leilão, transferidos ao arrematante,
         ou que exigem ação judicial. Score de 0-100, onde 100 = matrícula limpa.""",
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         allow_delegation=False
     )
 
@@ -225,7 +232,7 @@ def criar_revisor_senior() -> Agent:
 
         Seu objetivo é proteger o investidor de más decisões e destacar as boas oportunidades.""",
         verbose=True,
-        llm=llm,
+        llm=get_llm(),
         allow_delegation=True
     )
 
@@ -538,7 +545,7 @@ def criar_crew_analise(dados_imovel: Dict) -> Crew:
             task_revisao
         ],
         process=Process.hierarchical,
-        manager_llm=llm,
+        manager_llm=get_llm(),
         verbose=True
     )
 
