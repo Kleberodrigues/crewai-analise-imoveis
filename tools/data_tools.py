@@ -422,9 +422,250 @@ def check_update_schedule() -> Dict:
     }
 
 
+# ============================================================================
+# COLETA MULTI-FONTE - Web Scrapers de Leiloes
+# ============================================================================
+
+import asyncio
+from typing import Tuple
+
+
+async def coletar_todas_fontes(
+    estado: str = "SP",
+    preco_max: float = 200000,
+    max_por_fonte: int = 50,
+    coletar_detalhes: bool = False
+) -> Dict:
+    """
+    Executa todos os scrapers em paralelo e consolida resultados.
+
+    Args:
+        estado: Estado para filtrar (default: SP)
+        preco_max: Preco maximo (default: 200000)
+        max_por_fonte: Maximo de imoveis por fonte (default: 50)
+        coletar_detalhes: Se deve coletar detalhes de cada imovel (mais lento)
+
+    Returns:
+        Dict com imoveis consolidados e estatisticas por fonte
+    """
+    from scrapers import (
+        ZukScraper,
+        SuperbidScraper,
+        MegaLeiloesScraper,
+        FrazaoScraper,
+        BiasiScraper
+    )
+
+    logger.info(f"[MULTI-FONTE] Iniciando coleta de {5} fontes...")
+
+    scrapers = [
+        ("portal_zuk", ZukScraper()),
+        ("superbid", SuperbidScraper()),
+        ("mega_leiloes", MegaLeiloesScraper()),
+        ("frazao_leiloes", FrazaoScraper()),
+        ("biasi_leiloes", BiasiScraper()),
+    ]
+
+    resultados = {}
+    todos_imoveis = []
+    erros = []
+
+    # Executa scrapers sequencialmente para evitar bloqueio
+    for nome_fonte, scraper in scrapers:
+        try:
+            logger.info(f"[MULTI-FONTE] Coletando {nome_fonte}...")
+
+            imoveis = await scraper.executar(
+                coletar_detalhes=coletar_detalhes,
+                max_imoveis=max_por_fonte
+            )
+
+            # Aplica filtro de preco
+            imoveis_filtrados = [
+                i for i in imoveis
+                if i.get('preco', float('inf')) <= preco_max
+            ]
+
+            resultados[nome_fonte] = {
+                "total_coletados": len(imoveis),
+                "total_filtrados": len(imoveis_filtrados),
+                "status": "sucesso"
+            }
+
+            todos_imoveis.extend(imoveis_filtrados)
+            logger.info(f"[MULTI-FONTE] {nome_fonte}: {len(imoveis_filtrados)} imoveis")
+
+        except Exception as e:
+            logger.error(f"[MULTI-FONTE] Erro em {nome_fonte}: {e}")
+            resultados[nome_fonte] = {
+                "total_coletados": 0,
+                "total_filtrados": 0,
+                "status": "erro",
+                "erro": str(e)
+            }
+            erros.append({"fonte": nome_fonte, "erro": str(e)})
+
+    # Remove duplicatas (por endereco similar + preco proximo)
+    imoveis_unicos = remover_duplicatas_multifonte(todos_imoveis)
+
+    return {
+        "imoveis": imoveis_unicos,
+        "stats_por_fonte": resultados,
+        "total_bruto": len(todos_imoveis),
+        "total_unico": len(imoveis_unicos),
+        "duplicatas_removidas": len(todos_imoveis) - len(imoveis_unicos),
+        "fontes_com_erro": len(erros),
+        "erros": erros,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+def remover_duplicatas_multifonte(imoveis: List[Dict]) -> List[Dict]:
+    """
+    Remove duplicatas entre fontes diferentes.
+    Usa endereco normalizado + faixa de preco para identificar duplicatas.
+    """
+    vistos = set()
+    unicos = []
+
+    for imovel in imoveis:
+        # Cria chave de deduplicacao
+        endereco = imovel.get('endereco', '').lower()
+        # Normaliza endereco (remove acentos, espacos extras)
+        endereco_norm = ''.join(c for c in endereco if c.isalnum())
+
+        preco = imovel.get('preco', 0)
+        # Agrupa precos em faixas de 5000
+        faixa_preco = int(preco / 5000) * 5000
+
+        chave = f"{endereco_norm[:50]}_{faixa_preco}"
+
+        if chave not in vistos:
+            vistos.add(chave)
+            unicos.append(imovel)
+
+    return unicos
+
+
+def consolidar_todas_fontes(
+    imoveis_caixa: List[Dict],
+    imoveis_scrapers: List[Dict]
+) -> List[Dict]:
+    """
+    Consolida imoveis da Caixa com imoveis dos scrapers.
+
+    Args:
+        imoveis_caixa: Lista de imoveis do CSV da Caixa
+        imoveis_scrapers: Lista de imoveis dos web scrapers
+
+    Returns:
+        Lista consolidada sem duplicatas
+    """
+    # Marca fonte nos imoveis da Caixa
+    for imovel in imoveis_caixa:
+        imovel['fonte'] = 'caixa'
+
+    # Junta todas as listas
+    todos = imoveis_caixa + imoveis_scrapers
+
+    # Remove duplicatas
+    return remover_duplicatas_multifonte(todos)
+
+
+def executar_coleta_multifonte_sync(
+    estado: str = "SP",
+    preco_max: float = 200000,
+    incluir_caixa: bool = True,
+    max_por_fonte: int = 50
+) -> Dict:
+    """
+    Wrapper sincrono para a coleta multi-fonte.
+    Combina Caixa + Web Scrapers.
+
+    Args:
+        estado: Estado (default: SP)
+        preco_max: Preco maximo
+        incluir_caixa: Se deve incluir dados da Caixa
+        max_por_fonte: Maximo de imoveis por fonte
+
+    Returns:
+        Dict com todos os imoveis consolidados
+    """
+    imoveis_caixa = []
+    stats_caixa = {}
+
+    # 1. Coleta Caixa (se habilitado)
+    if incluir_caixa:
+        try:
+            result = download_csv_caixa(estado, force=False)
+            if result["status"] in ["cached", "updated", "no_changes"]:
+                imoveis_raw = parse_csv_imoveis(result["filepath"])
+                filtrado = filter_imoveis(
+                    imoveis_raw,
+                    preco_max=preco_max,
+                    tipo="Apartamento",
+                    praca="2a Praca",
+                    cidades=CIDADES_ALVO
+                )
+                imoveis_caixa = filtrado["imoveis"]
+                stats_caixa = {
+                    "total": len(imoveis_caixa),
+                    "status": "sucesso",
+                    "source": result["status"]
+                }
+        except Exception as e:
+            logger.error(f"[COLETA] Erro na Caixa: {e}")
+            stats_caixa = {"total": 0, "status": "erro", "erro": str(e)}
+
+    # 2. Coleta Web Scrapers
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    resultado_scrapers = loop.run_until_complete(
+        coletar_todas_fontes(
+            estado=estado,
+            preco_max=preco_max,
+            max_por_fonte=max_por_fonte,
+            coletar_detalhes=False  # Mais rapido sem detalhes
+        )
+    )
+
+    # 3. Consolida
+    imoveis_consolidados = consolidar_todas_fontes(
+        imoveis_caixa,
+        resultado_scrapers["imoveis"]
+    )
+
+    # 4. Ordena por desconto
+    imoveis_consolidados.sort(
+        key=lambda x: x.get('desconto', 0),
+        reverse=True
+    )
+
+    # Estatisticas finais
+    return {
+        "imoveis": imoveis_consolidados,
+        "stats": {
+            "total_consolidado": len(imoveis_consolidados),
+            "fonte_caixa": stats_caixa.get("total", 0),
+            "fonte_zuk": resultado_scrapers["stats_por_fonte"].get("portal_zuk", {}).get("total_filtrados", 0),
+            "fonte_superbid": resultado_scrapers["stats_por_fonte"].get("superbid", {}).get("total_filtrados", 0),
+            "fonte_megaleiloes": resultado_scrapers["stats_por_fonte"].get("mega_leiloes", {}).get("total_filtrados", 0),
+            "fonte_frazao": resultado_scrapers["stats_por_fonte"].get("frazao_leiloes", {}).get("total_filtrados", 0),
+            "fonte_biasi": resultado_scrapers["stats_por_fonte"].get("biasi_leiloes", {}).get("total_filtrados", 0),
+            "duplicatas_removidas": resultado_scrapers.get("duplicatas_removidas", 0),
+            "erros": resultado_scrapers.get("erros", [])
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+
 # Exemplo de uso
 if __name__ == "__main__":
-    # Testa download
+    # Testa download Caixa
     result = download_csv_caixa("SP", force=False)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -442,3 +683,15 @@ if __name__ == "__main__":
         )
         print(f"\nTotal filtrado: {filtrado['stats']['total_filtrado']}")
         print(json.dumps(filtrado['stats'], indent=2, ensure_ascii=False))
+
+    # Testa coleta multi-fonte (descomente para testar)
+    # print("\n" + "="*50)
+    # print("Testando coleta multi-fonte...")
+    # resultado = executar_coleta_multifonte_sync(
+    #     estado="SP",
+    #     preco_max=200000,
+    #     incluir_caixa=True,
+    #     max_por_fonte=10
+    # )
+    # print(f"Total consolidado: {resultado['stats']['total_consolidado']}")
+    # print(json.dumps(resultado['stats'], indent=2, ensure_ascii=False))

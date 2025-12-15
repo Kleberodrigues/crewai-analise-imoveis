@@ -29,7 +29,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Imports das tools
-from tools.data_tools import download_csv_caixa, parse_csv_imoveis, filter_imoveis
+from tools.data_tools import (
+    download_csv_caixa, parse_csv_imoveis, filter_imoveis,
+    executar_coleta_multifonte_sync
+)
 from tools.calc_tools import calc_custos_totais
 from tools.score_tools import (
     calc_score_edital, calc_score_matricula, calc_score_localizacao,
@@ -84,6 +87,11 @@ class PipelineLeilao:
             "inicio": datetime.now().isoformat(),
             "fonte_caixa": 0,
             "fonte_zuk": 0,
+            "fonte_superbid": 0,
+            "fonte_megaleiloes": 0,
+            "fonte_frazao": 0,
+            "fonte_biasi": 0,
+            "total_scrapers": 0,
             "total_filtrado": 0,
             "total_analisado": 0,
             "recomendados": 0
@@ -149,12 +157,68 @@ class PipelineLeilao:
             logger.error(f"Erro na coleta Caixa: {e}")
             return []
 
+    def coletar_multifonte(self, usar_scrapers: bool = True) -> List[Dict]:
+        """
+        Coleta imoveis de multiplas fontes (Web Scrapers).
+
+        Args:
+            usar_scrapers: Se True, usa os 5 web scrapers (Zuk, Superbid, etc.)
+
+        Returns:
+            Lista de imoveis coletados de todas as fontes
+        """
+        logger.info("=" * 50)
+        logger.info("ETAPA 2: Coleta Multi-Fonte (Web Scrapers)")
+        logger.info("=" * 50)
+
+        if not usar_scrapers:
+            logger.info("Web Scrapers desabilitados")
+            return []
+
+        try:
+            logger.info("Executando scrapers: Zuk, Superbid, Mega Leiloes, Frazao, Biasi")
+
+            resultado = executar_coleta_multifonte_sync(
+                estado="SP",
+                preco_max=FILTROS["preco_max"],
+                incluir_caixa=False,  # Caixa ja foi coletada separadamente
+                max_por_fonte=30
+            )
+
+            imoveis = resultado.get("imoveis", [])
+            stats_fontes = resultado.get("stats", {})
+
+            # Atualiza stats do pipeline
+            self.stats["fonte_zuk"] = stats_fontes.get("fonte_zuk", 0)
+            self.stats["fonte_superbid"] = stats_fontes.get("fonte_superbid", 0)
+            self.stats["fonte_megaleiloes"] = stats_fontes.get("fonte_megaleiloes", 0)
+            self.stats["fonte_frazao"] = stats_fontes.get("fonte_frazao", 0)
+            self.stats["fonte_biasi"] = stats_fontes.get("fonte_biasi", 0)
+            self.stats["total_scrapers"] = len(imoveis)
+
+            logger.info(f"Total coletado dos scrapers: {len(imoveis)}")
+            logger.info(f"  Zuk: {stats_fontes.get('fonte_zuk', 0)}")
+            logger.info(f"  Superbid: {stats_fontes.get('fonte_superbid', 0)}")
+            logger.info(f"  Mega Leiloes: {stats_fontes.get('fonte_megaleiloes', 0)}")
+            logger.info(f"  Frazao: {stats_fontes.get('fonte_frazao', 0)}")
+            logger.info(f"  Biasi: {stats_fontes.get('fonte_biasi', 0)}")
+
+            if stats_fontes.get("erros"):
+                logger.warning(f"Erros nos scrapers: {stats_fontes['erros']}")
+
+            return imoveis
+
+        except Exception as e:
+            logger.error(f"Erro na coleta multi-fonte: {e}")
+            return []
+
     def coletar_zuk(self) -> List[Dict]:
-        """Coleta imoveis do Portal Zuk via Apify - DESABILITADO"""
-        # DESABILITADO: Focando apenas na Caixa por enquanto
-        # Sera implementado futuramente para Portal Zuk
-        logger.info("Portal Zuk desabilitado - usando apenas dados da Caixa")
-        return []
+        """
+        Metodo legado - agora usa coletar_multifonte.
+        Mantido para compatibilidade.
+        """
+        # Usa o novo sistema multi-fonte
+        return self.coletar_multifonte(usar_scrapers=True)
 
     def consolidar_imoveis(self, caixa: List[Dict], zuk: List[Dict]) -> List[Dict]:
         """Consolida e remove duplicatas"""
