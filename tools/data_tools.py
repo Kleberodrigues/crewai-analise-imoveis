@@ -175,6 +175,19 @@ def download_csv_caixa(estado: str = "SP", force: bool = False) -> Dict:
                 "message": f"Download concluido: {total_imoveis} imoveis"
             }
         else:
+            # Fallback: usa cache existente se disponivel
+            if filepath.exists():
+                logger.warning(f"Download falhou (HTTP {response.status_code}), usando cache existente")
+                metadata = get_cache_metadata()
+                cached = metadata.get(f"Lista_imoveis_{estado}", {})
+                return {
+                    "status": "cached",
+                    "filepath": str(filepath),
+                    "last_update": cached.get("last_update"),
+                    "total_imoveis": cached.get("total_imoveis", 0),
+                    "hash": cached.get("hash"),
+                    "message": f"Download falhou, usando cache existente"
+                }
             return {
                 "status": "error",
                 "error": f"HTTP {response.status_code}",
@@ -183,6 +196,19 @@ def download_csv_caixa(estado: str = "SP", force: bool = False) -> Dict:
 
     except Exception as e:
         logger.error(f"Erro no download: {str(e)}")
+        # Fallback: usa cache existente se disponivel
+        if filepath.exists():
+            logger.warning(f"Erro no download, usando cache existente: {filepath}")
+            metadata = get_cache_metadata()
+            cached = metadata.get(f"Lista_imoveis_{estado}", {})
+            return {
+                "status": "cached",
+                "filepath": str(filepath),
+                "last_update": cached.get("last_update"),
+                "total_imoveis": cached.get("total_imoveis", 0),
+                "hash": cached.get("hash"),
+                "message": f"Erro no download, usando cache existente"
+            }
         return {
             "status": "error",
             "error": str(e),
