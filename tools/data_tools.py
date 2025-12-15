@@ -448,6 +448,27 @@ async def coletar_todas_fontes(
     Returns:
         Dict com imoveis consolidados e estatisticas por fonte
     """
+    # Verifica se Playwright esta disponivel antes de importar scrapers
+    try:
+        from playwright.async_api import async_playwright
+        # Testa se Chromium esta instalado
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            await browser.close()
+        logger.info("[MULTI-FONTE] Playwright/Chromium verificado com sucesso")
+    except Exception as e:
+        logger.error(f"[MULTI-FONTE] Playwright nao disponivel: {e}")
+        return {
+            "imoveis": [],
+            "stats_por_fonte": {},
+            "total_bruto": 0,
+            "total_unico": 0,
+            "duplicatas_removidas": 0,
+            "fontes_com_erro": 1,
+            "erros": [{"fonte": "playwright", "erro": f"Playwright/Chromium nao disponivel: {str(e)}"}],
+            "timestamp": datetime.now().isoformat()
+        }
+
     from scrapers import (
         ZukScraper,
         SuperbidScraper,
@@ -617,21 +638,56 @@ def executar_coleta_multifonte_sync(
             logger.error(f"[COLETA] Erro na Caixa: {e}")
             stats_caixa = {"total": 0, "status": "erro", "erro": str(e)}
 
-    # 2. Coleta Web Scrapers
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    # 2. Coleta Web Scrapers (com fallback se Playwright nao disponivel)
+    resultado_scrapers = {
+        "imoveis": [],
+        "stats_por_fonte": {},
+        "duplicatas_removidas": 0,
+        "erros": []
+    }
 
-    resultado_scrapers = loop.run_until_complete(
-        coletar_todas_fontes(
-            estado=estado,
-            preco_max=preco_max,
-            max_por_fonte=max_por_fonte,
-            coletar_detalhes=False  # Mais rapido sem detalhes
-        )
-    )
+    try:
+        # Tenta importar e verificar se Playwright esta disponivel
+        try:
+            from playwright.async_api import async_playwright
+            playwright_disponivel = True
+        except ImportError:
+            playwright_disponivel = False
+            logger.warning("[COLETA] Playwright nao instalado - scrapers desabilitados")
+
+        if playwright_disponivel:
+            # Usa asyncio.run() que e mais seguro em contextos sincronos
+            # Cria nova thread para evitar conflito com event loops existentes
+            import concurrent.futures
+
+            def executar_scrapers():
+                """Executa scrapers em um novo event loop isolado"""
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(
+                        coletar_todas_fontes(
+                            estado=estado,
+                            preco_max=preco_max,
+                            max_por_fonte=max_por_fonte,
+                            coletar_detalhes=False
+                        )
+                    )
+                finally:
+                    loop.close()
+
+            # Executa em thread separada para evitar conflitos de event loop
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(executar_scrapers)
+                resultado_scrapers = future.result(timeout=300)  # 5 min timeout
+
+    except concurrent.futures.TimeoutError:
+        logger.error("[COLETA] Timeout nos scrapers (5 min)")
+        resultado_scrapers["erros"].append({"fonte": "scrapers", "erro": "Timeout apos 5 minutos"})
+    except Exception as e:
+        logger.error(f"[COLETA] Erro nos scrapers: {e}")
+        resultado_scrapers["erros"].append({"fonte": "scrapers", "erro": str(e)})
 
     # 3. Consolida
     imoveis_consolidados = consolidar_todas_fontes(
