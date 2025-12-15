@@ -843,16 +843,16 @@ def _formatar_detalhe_imovel(ranking: int, imovel: dict) -> str:
    • Margem Segurança: {resultado.get('margem_seguranca_percentual', 0):.1f}%
 
 📊 COMPOSIÇÃO DO SCORE (como chegamos a {score_geral:.0f}/100)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   | FATOR        | SCORE | PESO  | CONTRIBUIÇÃO |
-   |--------------|-------|-------|--------------|
-   | Edital       | {scores.get('edital', 0):5.1f} |  20%  | {scores.get('edital', 0) * 0.20:5.1f} pts |
-   | Matrícula    | {scores.get('matricula', 0):5.1f} |  20%  | {scores.get('matricula', 0) * 0.20:5.1f} pts |
-   | Localização  | {scores.get('localizacao', 0):5.1f} |  25%  | {scores.get('localizacao', 0) * 0.25:5.1f} pts |
-   | Financeiro   | {scores.get('financeiro', 0):5.1f} |  25%  | {scores.get('financeiro', 0) * 0.25:5.1f} pts |
-   | Liquidez     | {scores.get('liquidez', 0):5.1f} |  10%  | {scores.get('liquidez', 0) * 0.10:5.1f} pts |
-   |--------------|-------|-------|--------------|
-   | TOTAL        |       | 100%  | {score_geral:5.1f} pts |
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   FATOR        | SCORE | BASEADO EM (R$)              | PESO | CONTRIBUIÇÃO
+   -------------|-------|------------------------------|------|-------------
+   Edital       | {scores.get('edital', 0):5.1f} | Débitos: R$ {total_debitos:>10,.0f}     | 20%  | {scores.get('edital', 0) * 0.20:5.1f} pts
+   Matrícula    | {scores.get('matricula', 0):5.1f} | Gravames: R$ {valor_gravames:>8,.0f}    | 20%  | {scores.get('matricula', 0) * 0.20:5.1f} pts
+   Localização  | {scores.get('localizacao', 0):5.1f} | Preço/m²: R$ {preco_m2:>8,.0f}    | 25%  | {scores.get('localizacao', 0) * 0.25:5.1f} pts
+   Financeiro   | {scores.get('financeiro', 0):5.1f} | Lucro: R$ {resultado.get('lucro_liquido', 0):>10,.0f}    | 25%  | {scores.get('financeiro', 0) * 0.25:5.1f} pts
+   Liquidez     | {scores.get('liquidez', 0):5.1f} | Condo: R$ {condominio:>8,.0f}/mês  | 10%  | {scores.get('liquidez', 0) * 0.10:5.1f} pts
+   -------------|-------|------------------------------|------|-------------
+   TOTAL        |       |                              | 100% | {score_geral:5.1f} pts
 
    💡 Fatores com maior impacto: Localização (25%) e Financeiro (25%)
    ⚠️ Fator mais fraco: {'Edital' if scores.get('edital', 0) == min(scores.get('edital', 100), scores.get('matricula', 100), scores.get('localizacao', 100), scores.get('financeiro', 100), scores.get('liquidez', 100)) else 'Matrícula' if scores.get('matricula', 0) == min(scores.get('edital', 100), scores.get('matricula', 100), scores.get('localizacao', 100), scores.get('financeiro', 100), scores.get('liquidez', 100)) else 'Localização' if scores.get('localizacao', 0) == min(scores.get('edital', 100), scores.get('matricula', 100), scores.get('localizacao', 100), scores.get('financeiro', 100), scores.get('liquidez', 100)) else 'Financeiro' if scores.get('financeiro', 0) == min(scores.get('edital', 100), scores.get('matricula', 100), scores.get('localizacao', 100), scores.get('financeiro', 100), scores.get('liquidez', 100)) else 'Liquidez'} ({min(scores.get('edital', 100), scores.get('matricula', 100), scores.get('localizacao', 100), scores.get('financeiro', 100), scores.get('liquidez', 100)):.0f}/100)
