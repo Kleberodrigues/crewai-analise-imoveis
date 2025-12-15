@@ -14,3 +14,6 @@ numpy>=1.26.2
 reportlab>=4.0.8
 python-dateutil>=2.8.2
 tenacity>=8.2.3
+
+# Web Scraping
+playwright>=1.40.0
