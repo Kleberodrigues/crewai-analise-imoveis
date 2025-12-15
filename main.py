@@ -929,8 +929,8 @@ def executar_pipeline():
 
 📥 DOWNLOAD DOS RELATÓRIOS COMPLETOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• PDF: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/pdf
-• CSV: https://n8n-crewai-leiloes.zq1zp2.easypanel.host/pipeline/download/csv
+• PDF: https://n8n-crewai.zq1zp2.easypanel.host/pipeline/download/pdf
+• CSV: https://n8n-crewai.zq1zp2.easypanel.host/pipeline/download/csv
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 Gerado automaticamente pelo Pipeline de Análise de Leilões
