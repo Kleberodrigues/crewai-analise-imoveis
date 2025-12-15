@@ -22,29 +22,28 @@ class FrazaoScraper(BaseLeilaoScraper):
     FONTE_NOME = "frazao_leiloes"
     BASE_URL = "https://www.frazaoleiloes.com.br"
 
-    # URLs por banco - todos com filtro SP e apartamento
+    # URLs por banco - sem filtros complexos para evitar erros
     URLS_BANCOS = [
-        "/itau/leiloes?uf=SP&categoria=apartamento",
-        "/santander/leiloes?uf=SP&categoria=apartamento",
-        "/banco-inter/leiloes?uf=SP&categoria=apartamento",
+        "/itau/leiloes",
+        "/santander/leiloes",
     ]
 
-    # Seletores CSS
+    # Seletores CSS - baseado na estrutura real do site
     SELETORES = {
-        "card_imovel": ".leilao-item, .auction-card, .property-card, .item-leilao, [class*='leilao']",
-        "link_imovel": "a[href*='/leilao/'], a[href*='/imovel/'], a.ver-leilao",
-        "preco": ".valor, .preco, .price, .lance-minimo",
-        "endereco": ".endereco, .local, .address, .localizacao",
-        "area": ".area, .metros, .m2",
-        "quartos": ".quartos, .dormitorios",
-        "desconto": ".desconto, .economia",
-        "avaliacao": ".avaliacao, .valor-avaliado",
-        "imagem": "img.foto, img.thumb, img[src*='imovel']",
-        "data_leilao": ".data, .data-leilao, .encerramento",
+        "card_imovel": ".card",
+        "link_imovel": "a[href*='/lote/']",
+        "preco": ".valor, .preco, .price",
+        "endereco": ".endereco, .titulo, .title",
+        "area": ".area, [class*='area']",
+        "quartos": ".quartos, [class*='quarto']",
+        "desconto": ".desconto",
+        "avaliacao": ".avaliacao",
+        "imagem": "img",
+        "data_leilao": ".data, .prazo",
         "praca": ".praca, .etapa",
-        "modalidade": ".modalidade, .tipo",
-        "banco": ".banco, .instituicao, .financeira",
-        "paginacao": ".pagination a.next, .pagina-seguinte, [rel='next']"
+        "modalidade": ".modalidade",
+        "banco": ".banco",
+        "paginacao": ".pagination a.next, a[rel='next']"
     }
 
     async def coletar_listagem(self) -> List[Dict]:
@@ -128,8 +127,15 @@ class FrazaoScraper(BaseLeilaoScraper):
         """Extrai imoveis da pagina atual"""
         imoveis = []
 
-        await self.esperar_elemento(self.SELETORES["card_imovel"])
-        cards = await self.page.query_selector_all(self.SELETORES["card_imovel"])
+        # Aguarda cards carregarem
+        try:
+            await self.page.wait_for_selector(".card", timeout=10000)
+        except:
+            logger.warning(f"[{self.FONTE_NOME}] Timeout aguardando .card")
+
+        # Busca todos os cards
+        cards = await self.page.query_selector_all(".card")
+        logger.info(f"[{self.FONTE_NOME}] {len(cards)} cards encontrados")
 
         for card in cards:
             try:
@@ -146,17 +152,16 @@ class FrazaoScraper(BaseLeilaoScraper):
         dados = {'banco': banco}
 
         try:
-            # Link do imovel
-            link_elem = await card.query_selector(self.SELETORES["link_imovel"])
+            # Link do imovel - busca link com /lote/ no href
+            link_elem = await card.query_selector("a[href*='/lote/']")
             if link_elem:
                 href = await link_elem.get_attribute("href")
                 if href:
                     dados['link'] = href if href.startswith('http') else f"{self.BASE_URL}{href}"
-                    # ID do imovel
-                    match = re.search(r'/leilao/(\d+)|/(\d+)', href)
+                    # ID do imovel - extrai numero do lote
+                    match = re.search(r'/lote/(\d+)', href)
                     if match:
-                        id_match = match.group(1) or match.group(2)
-                        dados['id_imovel'] = f"FRAZAO-{banco[:3].upper()}-{id_match}"
+                        dados['id_imovel'] = f"FRAZAO-{banco[:3].upper()}-{match.group(1)}"
 
             # Preco
             preco_elem = await card.query_selector(self.SELETORES["preco"])
