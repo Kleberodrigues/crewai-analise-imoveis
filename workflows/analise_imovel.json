@@ -1,0 +1,339 @@
+{
+  "name": "Análise de Imóvel de Leilão",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analisar-imovel",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "analisar-imovel"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "table": "imoveis_leilao",
+        "filterType": "manual",
+        "matchFields": {
+          "matchField": [
+            {
+              "field": "id",
+              "value": "={{ $json.imovel_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-buscar-imovel",
+      "name": "Supabase: Buscar Imóvel",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "analises_viabilidade",
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "imovel_id",
+              "fieldValue": "={{ $json.imovel_id }}"
+            },
+            {
+              "fieldId": "user_id",
+              "fieldValue": "={{ $json.body.user_id || null }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "processando"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-criar-analise",
+      "name": "Supabase: Criar Análise (Status Processando)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CREWAI_API_URL }}/analisar",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ JSON.stringify($node[\"Supabase: Buscar Imóvel\"].json[0]) }}",
+        "options": {"timeout": 180000, "headerParametersUi": {"parameter": [{"name": "x-api-key", "value": "={{ $env.CREWAI_API_TOKEN }}"}]}}
+      },
+      "id": "http-chamar-crewai",
+      "name": "HTTP: Chamar CrewAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resposta do CrewAI e preparar para inserção no Supabase\nconst crewaiResponse = $input.item.json;\nconst analiseId = $node[\"Supabase: Criar Análise (Status Processando)\"].json.id;\n\n// Extrair dados da análise do CrewAI\nconst analise = crewaiResponse.analise;\n\n// Estruturar dados para update no Supabase\nconst dadosAnalise = {\n  id: analiseId,\n  \n  // Custos\n  valor_arrematacao: analise.valor_arrematacao || 0,\n  custo_desocupacao: analise.custo_desocupacao || 0,\n  comissao_leiloeiro: analise.comissao_leiloeiro || 0,\n  itbi: analise.itbi || 0,\n  escritura_registro: analise.escritura_registro || 0,\n  taxas_cartoriais: analise.taxas_cartoriais || 0,\n  honorarios_advocaticios: analise.honorarios_advocaticios || 0,\n  total_custos_diretos: analise.total_custos_diretos || 0,\n  iptu_mensal: analise.iptu_mensal || 0,\n  condominio_mensal: analise.condominio_mensal || 0,\n  custo_reforma: analise.custo_reforma || 0,\n  custos_totais: analise.custos_totais || 0,\n  \n  // Mercado\n  preco_venda_estimado: analise.preco_venda_estimado || 0,\n  comissao_corretor: analise.comissao_corretor || 0,\n  aluguel_estimado_mensal: analise.aluguel_estimado_mensal || 0,\n  \n  // Resultados\n  lucro_bruto: analise.lucro_bruto || 0,\n  imposto_renda_lucro: analise.imposto_renda_lucro || 0,\n  lucro_liquido: analise.lucro_liquido || 0,\n  roi_percentual: analise.roi_percentual || 0,\n  \n  // Análises IA\n  analise_edital_resumo: analise.analise_edital_resumo || null,\n  analise_edital_riscos: analise.analise_edital_riscos || [],\n  analise_edital_score: analise.analise_edital_score || 0,\n  analise_matricula_resumo: analise.analise_matricula_resumo || null,\n  analise_matricula_gravames: analise.analise_matricula_gravames || [],\n  analise_matricula_score: analise.analise_matricula_score || 0,\n  analise_localizacao_sp: analise.analise_localizacao_sp || null,\n  score_localizacao: analise.score_localizacao || 0,\n  \n  // Recomendação\n  recomendacao: analise.recomendacao || 'analisar_melhor',\n  score_geral: analise.score_geral || 0,\n  justificativa_ia: analise.justificativa_ia || null,\n  pontos_atencao: analise.pontos_atencao || [],\n  proximos_passos: analise.proximos_passos || [],\n  comparacao_tesouro_direto: analise.comparacao_tesouro_direto || {},\n  comparacao_cdb: analise.comparacao_cdb || {},\n  \n  // Controle\n  status: 'concluido',\n  tempo_processamento_segundos: crewaiResponse.tempo_processamento_segundos || 0\n};\n\nreturn { json: dadosAnalise };"
+      },
+      "id": "function-processar-response",
+      "name": "Function: Processar Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "analises_viabilidade",
+        "filterType": "manual",
+        "matchFields": {
+          "matchField": [
+            {
+              "field": "id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "dataMode": "autoMapInputData",
+        "options": {}
+      },
+      "id": "supabase-atualizar-analise",
+      "name": "Supabase: Atualizar Análise",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  analise_id: $json.id,\n  status: $json.status,\n  score_geral: $json.score_geral,\n  recomendacao: $json.recomendacao,\n  tempo_processamento: $json.tempo_processamento_segundos\n}) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "analises_logs",
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "imovel_id",
+              "fieldValue": "={{ $json.imovel_id }}"
+            },
+            {
+              "fieldId": "tipo_log",
+              "fieldValue": "erro"
+            },
+            {
+              "fieldId": "mensagem",
+              "fieldValue": "={{ $json.error.message }}"
+            },
+            {
+              "fieldId": "detalhes",
+              "fieldValue": "={{ JSON.stringify($json.error) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-log-erro",
+      "name": "Supabase: Log Erro",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "analises_viabilidade",
+        "filterType": "manual",
+        "matchFields": {
+          "matchField": [
+            {
+              "field": "id",
+              "value": "={{ $node[\"Supabase: Criar Análise (Status Processando)\"].json.id }}"
+            }
+          ]
+        },
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "erro"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-marcar-erro",
+      "name": "Supabase: Marcar Como Erro",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1250, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  erro: true,\n  mensagem: \"Erro ao processar análise\",\n  detalhes: $json.error.message\n}) }}",
+        "responseCode": 500,
+        "options": {}
+      },
+      "id": "webhook-response-erro",
+      "name": "Webhook Response Erro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Buscar Imóvel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Buscar Imóvel": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Criar Análise (Status Processando)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Criar Análise (Status Processando)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Chamar CrewAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Chamar CrewAI": {
+      "main": [
+        [
+          {
+            "node": "Function: Processar Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: Log Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Processar Response": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Atualizar Análise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Atualizar Análise": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Log Erro": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Marcar Como Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Marcar Como Erro": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-22T00:00:00.000Z",
+  "versionId": "1"
+}

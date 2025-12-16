@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.abacatepay.com)",
+      "WebFetch(domain:abacatepay.readme.io)",
+      "Bash(python test_abacatepay.py:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(timeout /t 3)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(ngrok http:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir /b:*)",
+      "Bash(git add:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(ls:*)",
+      "Bash(git reset:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: atualiza scrapers Zuk e Frazao com bypass Cloudflare\n\n- base_scraper: adiciona stealth mode com playwright-stealth\n- base_scraper: adiciona anti-detection browser args\n- base_scraper: adiciona script para remover indicadores de automacao\n- zuk_scraper: adiciona funcao _aguardar_cloudflare para bypass\n- zuk_scraper: atualiza seletores CSS para estrutura Dez 2024\n- frazao_scraper: corrige seletor de preco para .price-line\n- frazao_scraper: adiciona extracao de data-tipo e data-addr\n- frazao_scraper: atualiza seletores para .card-format-all\n\nTestado: Zuk 30 imoveis (7 <200k), Frazao 40 imoveis (4 <200k)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

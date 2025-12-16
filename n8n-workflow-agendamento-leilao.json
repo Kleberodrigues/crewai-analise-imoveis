@@ -1,0 +1,328 @@
+{
+  "name": "Pipeline Leilao - Agendamento 2x Semana",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1,4"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Agendamento 2x Semana",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "notes": "Executa Segunda e Quinta as 8h (America/Sao_Paulo)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-crewai.zq1zp2.easypanel.host/pipeline/executar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.CREWAI_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "preco_max",
+              "value": "150000"
+            },
+            {
+              "name": "tipo",
+              "value": "Apartamento"
+            },
+            {
+              "name": "quantidade_top",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "http-executar-pipeline",
+      "name": "Executar Pipeline CrewAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "notes": "Chama API do CrewAI para executar analise completa"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-success",
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-success",
+      "name": "Verificar Sucesso",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "pipeline_execucoes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "data_execucao": "={{ $now.toISO() }}",
+            "status": "={{ $json.body.status }}",
+            "total_analisados": "={{ $json.body.stats.total_analisado }}",
+            "top5_selecionados": "={{ $json.body.stats.top5_selecionados }}",
+            "recomendados": "={{ $json.body.stats.recomendados }}",
+            "arquivo_csv": "={{ $json.body.relatorios.top5_csv }}",
+            "arquivo_pdf": "={{ $json.body.relatorios.top5_pdf }}",
+            "resumo_json": "={{ JSON.stringify($json.body.top5_resumo) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "supabase-log-sucesso",
+      "name": "Registrar Execucao Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [960, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-creds",
+          "name": "Supabase API"
+        }
+      },
+      "notes": "Registra execucao bem-sucedida no Supabase"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "notif-message",
+              "name": "message",
+              "value": "=Pipeline de Leilao executado com sucesso!\n\nTotal analisados: {{ $json.body.stats.total_analisado }}\nTop 5 selecionados: {{ $json.body.stats.top5_selecionados }}\nRecomendados (COMPRAR): {{ $json.body.stats.recomendados }}\n\nArquivos gerados:\n- CSV: {{ $json.body.relatorios.top5_csv }}\n- PDF: {{ $json.body.relatorios.top5_pdf }}",
+              "type": "string"
+            },
+            {
+              "id": "notif-title",
+              "name": "title",
+              "value": "Pipeline Leilao - Sucesso",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-notificacao-sucesso",
+      "name": "Preparar Notificacao Sucesso",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, 320]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "notif-error-msg",
+              "name": "message",
+              "value": "=ERRO no Pipeline de Leilao!\n\nErro: {{ $json.body.error || $json.body.message || 'Erro desconhecido' }}\n\nStats parciais:\n{{ JSON.stringify($json.body.stats, null, 2) }}",
+              "type": "string"
+            },
+            {
+              "id": "notif-error-title",
+              "name": "title",
+              "value": "Pipeline Leilao - ERRO",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-notificacao-erro",
+      "name": "Preparar Notificacao Erro",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, 440]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.NOTIFICATION_EMAIL || 'kleberr.rodriguess@gmail.com' }}",
+        "subject": "={{ $json.title }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}"
+      },
+      "id": "email-notificacao",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1200, 380],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-creds",
+          "name": "SMTP Gmail"
+        }
+      },
+      "notes": "Envia email de notificacao"
+    },
+    {
+      "parameters": {},
+      "id": "webhook-trigger",
+      "name": "Webhook Manual",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "webhookId": "executar-pipeline-leilao",
+      "notes": "Permite execucao manual via webhook"
+    }
+  ],
+  "connections": {
+    "Agendamento 2x Semana": {
+      "main": [
+        [
+          {
+            "node": "Executar Pipeline CrewAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Manual": {
+      "main": [
+        [
+          {
+            "node": "Executar Pipeline CrewAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar Pipeline CrewAI": {
+      "main": [
+        [
+          {
+            "node": "Verificar Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Sucesso": {
+      "main": [
+        [
+          {
+            "node": "Registrar Execucao Supabase",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Notificacao Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Notificacao Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar Execucao Supabase": {
+      "main": []
+    },
+    "Preparar Notificacao Sucesso": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Notificacao Erro": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "America/Sao_Paulo"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "leilao"
+    },
+    {
+      "name": "agendamento"
+    },
+    {
+      "name": "crewai"
+    }
+  ],
+  "triggerCount": 2,
+  "versionId": "1"
+}

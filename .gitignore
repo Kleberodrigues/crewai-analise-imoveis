@@ -1,0 +1,72 @@
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# N8N
+n8n_data/
+
+# Debug files
+debug_*.py
+debug_*.html
+debug_*.png
+test_all_scrapers.py
+
+# Output files (generated)
+output/
+*.csv
+!data/*.csv
+
+# Cache
+cache_metadata.json
+*.cache
+
+# Temporary
+nul
+*.tmp

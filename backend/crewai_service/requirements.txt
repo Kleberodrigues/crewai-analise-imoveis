@@ -1,0 +1,19 @@
+# Pipeline Leilao - Requirements
+crewai>=0.28.8
+crewai-tools>=0.0.20
+flask>=3.0.0
+flask-cors>=4.0.0
+langchain-openai>=0.1.0
+supabase>=2.3.0
+python-dotenv>=1.0.0
+gunicorn>=21.2.0
+requests>=2.31.0
+httpx>=0.26.0
+pandas>=2.1.4
+numpy>=1.26.2
+reportlab>=4.0.8
+python-dateutil>=2.8.2
+tenacity>=8.2.3
+
+# Web Scraping
+playwright>=1.40.0

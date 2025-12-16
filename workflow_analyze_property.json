@@ -1,0 +1,85 @@
+{
+  "name": "Análise de Imóvel - CrewAI",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-property",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "8a7c3e2d-5f1b-4d9a-a3c2-7e8f9a1b2c3d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair e validar token JWT do Supabase\nconst token = $input.item.json.user_token;\nconst imovel_id = $input.item.json.imovel_id;\n\nif (!token) {\n  throw new Error('Token não fornecido');\n}\n\nif (!imovel_id) {\n  throw new Error('ID do imóvel não fornecido');\n}\n\n// Decodificar JWT\ntry {\n  const base64Url = token.split('.')[1];\n  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');\n  const jsonPayload = Buffer.from(base64, 'base64').toString();\n  const decoded = JSON.parse(jsonPayload);\n  \n  return {\n    user_id: decoded.sub,\n    imovel_id: imovel_id,\n    token: token\n  };\n} catch (error) {\n  throw new Error('Token inválido: ' + error.message);\n}"
+      },
+      "id": "9b8d4f3e-6g2c-5e0b-b4d3-8f9g0b2c3d4e",
+      "name": "Validate Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "0c9e5g4f-7h3d-6f1c-c5e4-9g0h1c3d4e5f",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 401,
+        "responseBody": "={{ $json }}"
+      },
+      "id": "1d0f6h5g-8i4e-7g2d-d6f5-0h1i2d4e5f6g",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 500]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Token": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-26T00:00:00.000Z",
+  "versionId": ""
+}

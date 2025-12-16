@@ -1,0 +1,187 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # REDIS - Cache e Message Broker
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: crewai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - crewai-network
+
+  # ============================================
+  # FLASK API - Aplicação Principal
+  # ============================================
+  api:
+    build:
+      context: ./backend/crewai_service
+      dockerfile: Dockerfile.prod
+      target: production
+    container_name: crewai-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/crewai_service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - crewai-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ============================================
+  # CELERY WORKER - Processamento Assíncrono
+  # ============================================
+  celery-worker:
+    build:
+      context: ./backend/crewai_service
+      dockerfile: Dockerfile.prod
+      target: celery-worker
+    container_name: crewai-celery-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/crewai_service:/app
+    networks:
+      - crewai-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ============================================
+  # CELERY BEAT - Scheduler
+  # ============================================
+  celery-beat:
+    build:
+      context: ./backend/crewai_service
+      dockerfile: Dockerfile.prod
+      target: celery-beat
+    container_name: crewai-celery-beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/crewai_service:/app
+    networks:
+      - crewai-network
+
+  # ============================================
+  # FLOWER - Monitoring Celery
+  # ============================================
+  flower:
+    build:
+      context: ./backend/crewai_service
+      dockerfile: Dockerfile.prod
+      target: flower
+    container_name: crewai-flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - FLOWER_PORT=5555
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/crewai_service:/app
+    networks:
+      - crewai-network
+
+  # ============================================
+  # N8N - Automação (Opcional)
+  # ============================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: crewai-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+      - N8N_HOST=${N8N_HOST:-n8n.localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${N8N_HOST:-n8n.localhost}/
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - crewai-network
+
+networks:
+  crewai-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  n8n_data:
+    driver: local

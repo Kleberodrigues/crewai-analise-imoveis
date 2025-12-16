@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Backend CrewAI
+  crewai:
+    build: ./backend/crewai_service
+    container_name: crewai-analise-imoveis
+    ports:
+      - "5000:5000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - PORT=5000
+      - CREWAI_API_TOKEN=${CREWAI_API_TOKEN}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      - MAX_BODY_KB=${MAX_BODY_KB:-256}
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-workflows
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin123}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      - CREWAI_API_URL=http://crewai:5000
+      - CREWAI_API_TOKEN=${CREWAI_API_TOKEN}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows
+    restart: unless-stopped
+    depends_on:
+      - crewai
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local
