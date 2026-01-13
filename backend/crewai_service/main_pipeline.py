@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 # Imports das tools
 from tools.data_tools import (
     download_csv_caixa, parse_csv_imoveis, filter_imoveis,
-    executar_coleta_multifonte_sync
+    executar_coleta_multifonte_sync,
+    pesquisar_mercado, comparar_imovel_mercado  # Novo: pesquisa de mercado real
 )
 from tools.calc_tools import calc_custos_totais
 from tools.score_tools import (
@@ -67,12 +68,12 @@ CIDADES_LITORAL = [
 ]
 CIDADES_ALVO = CIDADES_CAPITAL + CIDADES_LITORAL
 
-# Criterios de filtragem
+# Criterios de filtragem (AJUSTADO para ter mais resultados)
 FILTROS = {
-    "preco_max": 150000,
-    "tipo": "Apartamento",
-    "praca": "2a Praca",
-    "desconto_min": 30
+    "preco_max": 500000,  # Aumentado para R$ 500k (mercado atual mais caro)
+    "tipo": None,  # Aceita todos os tipos (apartamento, casa, comercial, etc)
+    "praca": None,  # Aceita 1a e 2a praca
+    "desconto_min": 0  # Aceita qualquer desconto
 }
 
 
@@ -218,9 +219,8 @@ class PipelineLeilao:
         Mantido para compatibilidade.
         """
         # Usa o novo sistema multi-fonte
-        # NOTA: Scrapers desabilitados por limitacao de memoria do servidor
-        # Para reativar, mude para usar_scrapers=True (requer 2GB+ RAM)
-        return self.coletar_multifonte(usar_scrapers=False)
+        # Scrapers habilitados para coleta completa
+        return self.coletar_multifonte(usar_scrapers=True)
 
     def consolidar_imoveis(self, caixa: List[Dict], zuk: List[Dict]) -> List[Dict]:
         """Consolida e remove duplicatas"""
@@ -353,22 +353,46 @@ class PipelineLeilao:
                 transporte=80
             )
 
-            # PESQUISA DE MERCADO REAL - Busca precos na web
-            mercado = buscar_preco_mercado_web(
-                cidade=cidade,
+            # PESQUISA DE MERCADO REAL - Web Scraping (VivaReal, ZapImoveis, OLX)
+            logger.info(f"  Pesquisando mercado para {bairro}, {cidade}...")
+            mercado_real = pesquisar_mercado(
                 bairro=bairro,
-                tipo_imovel="Apartamento",
+                cidade=cidade.lower().replace(" ", "-"),
+                uf="sp",
+                tipo="apartamento",
+                quartos=quartos,
                 area_m2=area,
-                quartos=quartos
+                fontes=['vivareal', 'olx']  # Usa VivaReal + OLX + fallback FipeZap
             )
 
-            # Dados de liquidez
-            liquidez_mercado = calcular_liquidez_mercado(
-                cidade=cidade,
-                bairro=bairro,
-                tipo_imovel="Apartamento",
-                preco=preco
-            )
+            # Compara com dados do imovel de leilao
+            comparacao = comparar_imovel_mercado(imovel, mercado_real)
+
+            # Extrai dados do mercado para uso posterior
+            mercado = {
+                "preco_m2": mercado_real.get("preco_m2", {}).get("medio", 5000),
+                "valor_estimado": mercado_real.get("valor_estimado", {}).get("valor", area * 5000),
+                "preco_m2_min": mercado_real.get("precos", {}).get("minimo", 0) / area if area > 0 else 0,
+                "preco_m2_max": mercado_real.get("precos", {}).get("maximo", 0) / area if area > 0 else 0,
+                "valor_min": mercado_real.get("precos", {}).get("minimo", 0),
+                "valor_max": mercado_real.get("precos", {}).get("maximo", 0),
+                "condominio_estimado": 500 if area < 60 else 700,
+                "iptu_estimado": 150 if area < 60 else 200,
+                "fonte": mercado_real.get("fonte", "estimativa"),
+                "confianca": "alta" if mercado_real.get("status") == "sucesso" else "media",
+                "amostras": mercado_real.get("total_encontrados", 0),
+                "imoveis_similares": mercado_real.get("imoveis", [])[:5]
+            }
+
+            logger.info(f"  Mercado: {mercado['fonte']} - R$ {mercado['preco_m2']:.2f}/m2")
+
+            # Dados de liquidez (usa mesma fonte)
+            liquidez_mercado = {
+                "tempo_venda_estimado_dias": 90 if mercado_real.get("total_encontrados", 0) > 5 else 120,
+                "demanda": "alta" if mercado_real.get("total_encontrados", 0) > 10 else "media",
+                "liquidez": "alta" if comparacao.get("classificacao_oportunidade") in ["EXCELENTE", "MUITO_BOA"] else "media",
+                "dificuldade_venda": "facil" if comparacao.get("desconto_vs_mercado", 0) > 30 else "moderada"
+            }
 
             preco_m2 = mercado.get("preco_m2", 5000)
             valor_mercado = mercado.get("valor_estimado", area * preco_m2)
@@ -481,7 +505,15 @@ class PipelineLeilao:
                     "amostras": mercado.get("amostras", 0),
                     "imoveis_similares": mercado.get("imoveis_similares", []),
                     "score_localizacao": localizacao["score"],
-                    "score_liquidez": liquidez["score"]
+                    "score_liquidez": liquidez["score"],
+                    # Novos dados de comparacao
+                    "comparacao_mercado": {
+                        "desconto_vs_mercado_pct": comparacao.get("desconto_vs_mercado", 0),
+                        "lucro_bruto_potencial": comparacao.get("lucro_bruto_potencial", 0),
+                        "margem_bruta_pct": comparacao.get("margem_bruta_pct", 0),
+                        "classificacao_oportunidade": comparacao.get("classificacao_oportunidade", "N/A"),
+                        "total_comparaveis": comparacao.get("total_comparaveis", 0)
+                    }
                 },
                 "custos": custos,
                 "scores": {

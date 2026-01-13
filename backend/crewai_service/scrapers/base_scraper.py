@@ -34,13 +34,14 @@ class BaseLeilaoScraper(ABC):
     BASE_URL: str = ""
 
     # Filtros padrao para leiloes extrajudiciais
+    # AJUSTADO: preco_max de 200k para 500k, removido filtro tipo_imovel e praca
     FILTROS_PADRAO = {
         "tipo_leilao": "extrajudicial",
-        "tipo_imovel": "apartamento",
-        "praca": "2a",
+        "tipo_imovel": None,  # Aceita qualquer tipo (apartamento, casa, etc)
+        "praca": None,  # Aceita 1a e 2a praca
         "modalidade": ["venda_online", "venda_direta"],
         "estado": "SP",
-        "preco_max": 200000
+        "preco_max": 500000  # Aumentado para ter mais resultados
     }
 
     # Configuracoes do browser
@@ -57,13 +58,13 @@ class BaseLeilaoScraper(ABC):
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
     ]
 
-    def __init__(self, headless: bool = True, timeout: int = 30000):
+    def __init__(self, headless: bool = True, timeout: int = 60000):
         """
         Inicializa o scraper.
 
         Args:
             headless: Se True, executa browser sem interface grafica
-            timeout: Timeout padrao para operacoes em ms
+            timeout: Timeout padrao para operacoes em ms (default: 60s)
         """
         self.headless = headless
         self.timeout = timeout
@@ -302,10 +303,12 @@ class BaseLeilaoScraper(ABC):
             if filtros.get('preco_max') and imovel['preco'] > filtros['preco_max']:
                 continue
 
-            # Filtro de tipo de imovel
-            tipo_filtro = filtros.get('tipo_imovel', '').lower()
-            if tipo_filtro and tipo_filtro not in imovel.get('tipo_imovel', '').lower():
-                continue
+            # Filtro de tipo de imovel (pula se filtro for None ou vazio)
+            tipo_filtro = filtros.get('tipo_imovel')
+            if tipo_filtro:
+                tipo_filtro_lower = tipo_filtro.lower()
+                if tipo_filtro_lower not in imovel.get('tipo_imovel', '').lower():
+                    continue
 
             # Filtro de estado
             if filtros.get('estado') and imovel.get('uf') != filtros['estado']:

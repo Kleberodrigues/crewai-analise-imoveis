@@ -227,14 +227,52 @@ def parse_csv_imoveis(csv_path: str) -> List[Dict]:
         Lista de dicionarios com dados normalizados
     """
     try:
-        df = pd.read_csv(csv_path, sep=';', encoding='latin-1', on_bad_lines='skip')
+        # Verifica se arquivo existe
+        if not Path(csv_path).exists():
+            logger.error(f"Arquivo nao encontrado: {csv_path}")
+            return []
 
-        # Normaliza nomes das colunas
-        df.columns = [
+        # Verifica se o arquivo e HTML (site da Caixa pode retornar HTML ao inves de CSV)
+        with open(csv_path, 'r', encoding='latin-1', errors='ignore') as f:
+            first_line = f.read(500)
+            if '<!DOCTYPE' in first_line or '<html' in first_line.lower():
+                logger.error(f"Arquivo contem HTML ao inves de CSV. Site da Caixa requer sessao/cookies.")
+                logger.info("Tentando usar dados dos scrapers como fonte alternativa...")
+                return []
+
+        # Tenta ler o CSV com diferentes configuracoes
+        try:
+            df = pd.read_csv(csv_path, sep=';', encoding='latin-1', on_bad_lines='skip')
+        except Exception as e1:
+            logger.warning(f"Erro com sep=';', tentando com ','...")
+            try:
+                df = pd.read_csv(csv_path, sep=',', encoding='latin-1', on_bad_lines='skip')
+            except Exception as e2:
+                logger.error(f"Erro ao ler CSV: {e1}, {e2}")
+                return []
+
+        # Verifica se tem colunas suficientes
+        if len(df.columns) < 6:
+            logger.error(f"CSV com poucas colunas ({len(df.columns)}). Formato invalido.")
+            return []
+
+        # Normaliza nomes das colunas (tenta mapear colunas existentes)
+        expected_cols = [
             'id_imovel', 'uf', 'cidade', 'bairro', 'endereco',
             'preco', 'valor_avaliacao', 'desconto', 'descricao',
             'modalidade', 'link'
         ]
+
+        # Se tiver 11 colunas, usa mapeamento direto
+        if len(df.columns) == 11:
+            df.columns = expected_cols
+        else:
+            # Tenta mapear colunas por nome ou posicao
+            logger.warning(f"CSV com {len(df.columns)} colunas (esperado 11). Tentando adaptar...")
+            # Usa as colunas existentes e preenche as faltantes
+            current_cols = list(df.columns)
+            new_cols = expected_cols[:len(current_cols)]
+            df.columns = new_cols
 
         # Limpa espacos
         for col in ['uf', 'cidade', 'bairro', 'endereco', 'modalidade']:
@@ -510,7 +548,7 @@ async def coletar_todas_fontes(
         ("superbid", SuperbidScraper()),
         ("mega_leiloes", MegaLeiloesScraper()),
         ("frazao_leiloes", FrazaoScraper()),
-        ("biasi_leiloes", BiasiScraper()),
+        # ("biasi_leiloes", BiasiScraper()),  # Desabilitado: muito lento (~7 min) e sem resultados
     ]
 
     resultados = {}
@@ -706,11 +744,11 @@ def executar_coleta_multifonte_sync(
             # Executa em thread separada para evitar conflitos de event loop
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(executar_scrapers)
-                resultado_scrapers = future.result(timeout=300)  # 5 min timeout
+                resultado_scrapers = future.result(timeout=900)  # 15 min timeout
 
     except concurrent.futures.TimeoutError:
-        logger.error("[COLETA] Timeout nos scrapers (5 min)")
-        resultado_scrapers["erros"].append({"fonte": "scrapers", "erro": "Timeout apos 5 minutos"})
+        logger.error("[COLETA] Timeout nos scrapers (15 min)")
+        resultado_scrapers["erros"].append({"fonte": "scrapers", "erro": "Timeout apos 15 minutos"})
     except Exception as e:
         logger.error(f"[COLETA] Erro nos scrapers: {e}")
         resultado_scrapers["erros"].append({"fonte": "scrapers", "erro": str(e)})
@@ -742,6 +780,194 @@ def executar_coleta_multifonte_sync(
             "erros": resultado_scrapers.get("erros", [])
         },
         "timestamp": datetime.now().isoformat()
+    }
+
+
+# ============================================================================
+# PESQUISA DE MERCADO - VivaReal, ZapImoveis, OLX
+# ============================================================================
+
+def pesquisar_mercado(
+    bairro: str,
+    cidade: str = "sao-paulo",
+    uf: str = "sp",
+    tipo: str = "apartamento",
+    quartos: int = 2,
+    area_m2: float = 50.0,
+    fontes: List[str] = None
+) -> Dict:
+    """
+    Pesquisa precos de mercado para um bairro especifico.
+    Usa VivaReal, ZapImoveis e OLX como fontes.
+    Fallback para dados FipeZap se scraping falhar.
+
+    Args:
+        bairro: Nome do bairro (ex: "guaianazes")
+        cidade: Nome da cidade (ex: "sao-paulo")
+        uf: Sigla do estado (ex: "sp")
+        tipo: Tipo do imovel (apartamento, casa)
+        quartos: Numero de quartos
+        area_m2: Area do imovel em m2
+        fontes: Lista de fontes (vivareal, zapimoveis, olx)
+
+    Returns:
+        Dict com dados de mercado (precos, estatisticas, imoveis comparaveis)
+    """
+    try:
+        # Importa o scraper de mercado
+        import sys
+        from pathlib import Path
+
+        # Adiciona diretorio dos scrapers ao path
+        scrapers_dir = Path(__file__).parent.parent / "scrapers"
+        if str(scrapers_dir) not in sys.path:
+            sys.path.insert(0, str(scrapers_dir))
+
+        from mercado_scraper import pesquisar_mercado_sync
+
+        logger.info(f"[MERCADO] Pesquisando: {bairro}, {cidade}-{uf.upper()}")
+
+        resultado = pesquisar_mercado_sync(
+            bairro=bairro,
+            cidade=cidade,
+            uf=uf,
+            tipo=tipo,
+            quartos=quartos,
+            area_referencia=area_m2,
+            fontes=fontes,
+            usar_fallback=True
+        )
+
+        logger.info(f"[MERCADO] Status: {resultado.get('status')}, Fonte: {resultado.get('fonte')}")
+
+        return resultado
+
+    except ImportError as e:
+        logger.error(f"[MERCADO] Erro de importacao: {e}")
+        # Retorna dados estimados basicos
+        return _gerar_estimativa_basica(bairro, cidade, tipo, quartos, area_m2)
+
+    except Exception as e:
+        logger.error(f"[MERCADO] Erro na pesquisa: {e}")
+        return _gerar_estimativa_basica(bairro, cidade, tipo, quartos, area_m2)
+
+
+def _gerar_estimativa_basica(
+    bairro: str,
+    cidade: str,
+    tipo: str,
+    quartos: int,
+    area_m2: float
+) -> Dict:
+    """Gera estimativa basica quando scraper nao esta disponivel"""
+    # Precos medios por m2 por regiao de SP
+    PRECOS_BASE = {
+        "leste": 4500,
+        "sul": 6000,
+        "norte": 6500,
+        "oeste": 8500,
+        "centro": 8000
+    }
+
+    # Tenta identificar regiao pelo bairro
+    bairro_lower = bairro.lower()
+    bairros_leste = ["guaianazes", "itaquera", "penha", "sao miguel", "ermelino", "itaim paulista"]
+    bairros_sul = ["jabaquara", "saude", "santo amaro", "interlagos", "grajau"]
+    bairros_norte = ["santana", "tucuruvi", "pirituba", "freguesia"]
+    bairros_oeste = ["lapa", "perdizes", "pinheiros", "butanta"]
+
+    if any(b in bairro_lower for b in bairros_leste):
+        preco_m2 = PRECOS_BASE["leste"]
+    elif any(b in bairro_lower for b in bairros_sul):
+        preco_m2 = PRECOS_BASE["sul"]
+    elif any(b in bairro_lower for b in bairros_norte):
+        preco_m2 = PRECOS_BASE["norte"]
+    elif any(b in bairro_lower for b in bairros_oeste):
+        preco_m2 = PRECOS_BASE["oeste"]
+    else:
+        preco_m2 = PRECOS_BASE["leste"]  # Default zona leste
+
+    valor_estimado = preco_m2 * area_m2
+
+    return {
+        'status': 'estimativa_basica',
+        'bairro': bairro,
+        'cidade': cidade,
+        'tipo': tipo,
+        'quartos': quartos,
+        'total_encontrados': 0,
+        'precos': {
+            'medio': round(valor_estimado, 2),
+            'mediano': round(valor_estimado, 2),
+            'minimo': round(valor_estimado * 0.85, 2),
+            'maximo': round(valor_estimado * 1.20, 2)
+        },
+        'preco_m2': {
+            'medio': round(preco_m2, 2),
+            'mediano': round(preco_m2, 2)
+        },
+        'valor_estimado': {
+            'area_referencia': area_m2,
+            'valor': round(valor_estimado, 2)
+        },
+        'imoveis': [],
+        'fonte': 'Estimativa basica (FipeZap)',
+        'nota': 'Dados estimados - scraper nao disponivel'
+    }
+
+
+def comparar_imovel_mercado(
+    imovel: Dict,
+    dados_mercado: Dict
+) -> Dict:
+    """
+    Compara um imovel de leilao com dados de mercado.
+
+    Args:
+        imovel: Dados do imovel de leilao
+        dados_mercado: Resultado da pesquisa de mercado
+
+    Returns:
+        Dict com analise comparativa
+    """
+    preco_leilao = imovel.get('preco', 0)
+    valor_avaliacao = imovel.get('valor_avaliacao', preco_leilao)
+
+    preco_mercado_medio = dados_mercado.get('precos', {}).get('medio', 0)
+    preco_mercado_min = dados_mercado.get('precos', {}).get('minimo', 0)
+
+    # Calcula descontos
+    desconto_avaliacao = ((valor_avaliacao - preco_leilao) / valor_avaliacao * 100) if valor_avaliacao > 0 else 0
+    desconto_mercado = ((preco_mercado_medio - preco_leilao) / preco_mercado_medio * 100) if preco_mercado_medio > 0 else 0
+
+    # Potencial de lucro bruto
+    lucro_bruto_potencial = preco_mercado_medio - preco_leilao
+    margem_bruta = (lucro_bruto_potencial / preco_leilao * 100) if preco_leilao > 0 else 0
+
+    # Classificacao de oportunidade
+    if desconto_mercado >= 40:
+        classificacao = "EXCELENTE"
+    elif desconto_mercado >= 30:
+        classificacao = "MUITO_BOA"
+    elif desconto_mercado >= 20:
+        classificacao = "BOA"
+    elif desconto_mercado >= 10:
+        classificacao = "MODERADA"
+    else:
+        classificacao = "BAIXA"
+
+    return {
+        'preco_leilao': preco_leilao,
+        'valor_avaliacao': valor_avaliacao,
+        'preco_mercado_medio': preco_mercado_medio,
+        'preco_mercado_minimo': preco_mercado_min,
+        'desconto_vs_avaliacao': round(desconto_avaliacao, 2),
+        'desconto_vs_mercado': round(desconto_mercado, 2),
+        'lucro_bruto_potencial': round(lucro_bruto_potencial, 2),
+        'margem_bruta_pct': round(margem_bruta, 2),
+        'classificacao_oportunidade': classificacao,
+        'fonte_mercado': dados_mercado.get('fonte', 'N/A'),
+        'total_comparaveis': dados_mercado.get('total_encontrados', 0)
     }
 
 
